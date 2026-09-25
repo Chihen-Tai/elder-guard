@@ -62,12 +62,12 @@ fonts, and Back always goes one page back. See [docs/DESIGN-NOTES.md](docs/DESIG
 ## Install (test build)
 
 1. Download `fkAd-0.5.0-debug.apk` from [Releases](../../releases). Android 8.0 or newer.
-2. Open the app → Settings, and turn on everything under "protection permissions": Usage access, Notification access,
+2. Open **fkAd** (the name on the home screen) → Settings, and turn on everything under "protection permissions": Usage access, Notification access,
    Notifications, Unrestricted battery.
 3. **OPPO / realme (ColorOS):** also enable App info → Battery usage → "Allow background activity".
 4. **vivo:** if the battery page only shows a switch, tap the words "Allow background usage" and choose "Unrestricted".
-5. For auto-close on Android 13+: sideloaded apps first need App info → ⋮ → "Allow restricted settings" before the
-   guard can be enabled under Accessibility.
+5. For auto-close on Android 13+: sideloaded apps first need App info → ⋮ → "Allow restricted settings" before
+   **fkAd** can be enabled under Accessibility.
 
 ## Development
 

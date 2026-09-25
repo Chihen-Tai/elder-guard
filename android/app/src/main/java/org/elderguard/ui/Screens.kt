@@ -38,7 +38,9 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import org.elderguard.R
 import org.elderguard.detect.RiskLevel
 
 // ---------------------------------------------------------------- models shown by the UI
@@ -125,9 +127,14 @@ private fun Page(bottom: (@Composable () -> Unit)? = null, content: @Composable 
 @Composable
 private fun BrandBar(onBack: (() -> Unit)? = null, onSettings: (() -> Unit)? = null) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        ShieldMark(ShieldState.Brand, 32.dp)
+        // same mark and name as the launcher icon, so the app on the home screen is easy to connect with this screen
+        Image(painterResource(R.drawable.brand_mark), contentDescription = null, modifier = Modifier.size(36.dp))
         Spacer(Modifier.size(10.dp))
-        Text("守門員", style = MaterialTheme.typography.titleLarge, color = Palette.Trust, modifier = Modifier.weight(1f))
+        Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.weight(1f)) {
+            Text("fkAd", style = MaterialTheme.typography.titleLarge, color = Palette.Trust)
+            Spacer(Modifier.size(8.dp))
+            Text("守門員", style = MaterialTheme.typography.bodyMedium, color = Palette.InkSoft)
+        }
         if (onBack != null) TextButton(onClick = onBack) { Text("回首頁", style = MaterialTheme.typography.labelMedium, color = Palette.Trust) }
         if (onSettings != null) OutlinedButton(onClick = onSettings, shape = ButtonShape, border = BorderStroke(1.5.dp, Palette.Trust),
             modifier = Modifier.heightIn(min = 48.dp)) { Text("設定", style = MaterialTheme.typography.labelMedium, color = Palette.Trust) }
@@ -331,7 +338,7 @@ fun SettingsScreen(
         Text("同一個 App 在 30 分鐘內\n第二次跳出全螢幕廣告，\n蓋住您正在用的畫面，\n守門員就自動把它關掉。\n第一次跳出不會動作。",
             style = MaterialTheme.typography.bodyMedium)
         if (s.closerOn && s.closedLast24h > 0) Text("過去 24 小時已經關掉 ${s.closedLast24h} 次。", style = MaterialTheme.typography.bodyMedium, color = Palette.Safe)
-        if (!s.closerOn) Text("要在手機的「無障礙」\n設定裡開啟「守門員」。\n守門員不會讀取\n畫面上的文字。", style = MaterialTheme.typography.bodyMedium, color = Palette.InkSoft)
+        if (!s.closerOn) Text("要在手機的「無障礙」\n設定裡開啟「fkAd」。\n守門員不會讀取\n畫面上的文字。", style = MaterialTheme.typography.bodyMedium, color = Palette.InkSoft)
         SecondaryButton(if (s.closerOn) "去關閉" else "去開啟", onCloserSettings)
     }
 
@@ -364,7 +371,7 @@ fun SettingsScreen(
 
     SecondaryButton("看手機上所有的 App", onAllApps)
     Text("桌面上看不到圖示的 App\n也會列出來。", style = MaterialTheme.typography.bodyMedium, color = Palette.InkSoft)
-    Text("守門員 ${s.version}", style = MaterialTheme.typography.bodyMedium, color = Palette.InkSoft)
+    Text("fkAd 守門員 ${s.version}", style = MaterialTheme.typography.bodyMedium, color = Palette.InkSoft)
 }
 
 @Composable
