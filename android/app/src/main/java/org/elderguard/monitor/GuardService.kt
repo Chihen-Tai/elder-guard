@@ -44,6 +44,23 @@ class GuardService : Service() {
         }
     }
 
+    /** When the screen went off; a heartbeat gap that started after it is just the phone sleeping. */
+    @Volatile private var screenOffMs = 0L
+
+    /**
+     * Screen on: check right away. The poll is an uptime-based delay that does not advance while the phone sleeps, so
+     * without this the heartbeat stayed stale for ~20 s after unlocking and the home screen briefly showed
+     * "monitoring not fully working" (vivo overnight log, 2026-09-26).
+     */
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) {
+            when (i.action) {
+                Intent.ACTION_SCREEN_OFF -> screenOffMs = System.currentTimeMillis()
+                Intent.ACTION_SCREEN_ON -> { h.removeCallbacks(poll); h.post(poll) }
+            }
+        }
+    }
+
     private val pkgReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
             val pkg = i.data?.schemeSpecificPart ?: return
@@ -68,6 +85,7 @@ class GuardService : Service() {
         if (Build.VERSION.SDK_INT >= 34) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE) else startForeground(1, n)
         thread = HandlerThread("guard").apply { start() }
         h = Handler(thread.looper)
+        registerReceiver(screenReceiver, IntentFilter().apply { addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF) })
         registerReceiver(pkgReceiver, IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED); addAction(Intent.ACTION_PACKAGE_CHANGED); addDataScheme("package")
         })
@@ -81,6 +99,7 @@ class GuardService : Service() {
         running = false
         store.diag("svc_stop")
         runCatching { unregisterReceiver(pkgReceiver) }
+        runCatching { unregisterReceiver(screenReceiver) }
         h.removeCallbacksAndMessages(null)
         thread.quitSafely()
         super.onDestroy()
@@ -92,7 +111,9 @@ class GuardService : Service() {
         val now = System.currentTimeMillis()
         val prevBeat = store.heartbeatMs
         // A long gap while we were supposed to run means the phone froze or killed the monitor (common on some brands).
-        if (prevBeat > 0 && now - prevBeat > 5 * 60_000L) store.diag("hb_gap", fields = mapOf("gapSec" to (now - prevBeat) / 1000))
+        if (prevBeat > 0 && now - prevBeat > 5 * 60_000L) store.diag("hb_gap", fields = mapOf("gapSec" to (now - prevBeat) / 1000,
+            // true = the gap began after the screen went off (normal sleep), false = the monitor was frozen or killed
+            "screenOff" to (screenOffMs in prevBeat..now)))
         store.heartbeatMs = now
         val caps = Capabilities.read(this)
         val snap = "usage=${caps.usageAccess} notif=${caps.notificationAccess} post=${caps.postNotifications} battery=${caps.batteryUnrestricted} closer=${AdCloserService.isEnabled(this)}"
