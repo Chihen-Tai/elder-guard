@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TEST ONLY. Harmless simulator of the 2026-09-25 adware behaviour, for the isolated emulator. No network. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <application android:label="測試用 PDF 閱讀器">
+        <activity android:name=".Main" android:exported="true"/>
+        <!-- the launcher entry is an alias, so the app can hide its own icon (as observed in the field) -->
+        <activity-alias android:name=".Launcher" android:targetActivity=".Main" android:exported="true">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <!-- same class name as Pangle's full-screen ad page seen in the field -->
+        <activity android:name="com.bytedance.sdk.openadsdk.activity.TTFullWebActivity" android:exported="false"
+            android:excludeFromRecents="true" android:taskAffinity=".ads"/>
+        <activity android:name="com.bytedance.sdk.openadsdk.activity.single.TTFullScreenExpressVideoActivity" android:exported="false"
+            android:excludeFromRecents="true" android:taskAffinity=".ads2"/>
+        <service android:name=".PopService" android:exported="false" android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="test simulator"/>
+        </service>
+        <receiver android:name=".Boot" android:exported="true">
+            <intent-filter><action android:name="android.intent.action.USER_PRESENT"/><action android:name="android.intent.action.BOOT_COMPLETED"/></intent-filter>
+        </receiver>
+    </application>
+</manifest>

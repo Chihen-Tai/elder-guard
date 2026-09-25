@@ -1,0 +1,19 @@
+# Never commit phone data, personal logs or third-party APKs (see docs/PLAN.md section 9)
+dataset-local/
+field-*/
+release/
+design/shots/
+verify-emu/
+spike/
+engine/eval_*
+engine/__pycache__/
+*.apk
+*.jsonl
+
+# build output
+**/build/
+**/.gradle/
+**/.kotlin/
+local.properties
+.idea/
+*.iml

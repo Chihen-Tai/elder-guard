@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TEST ONLY: a normal app (visible icon, ordinary notifications, own screens) used as a false-positive control. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <application android:label="測試用正常 App">
+        <!-- in-app interstitial with an ad-SDK class name: opened by the app itself while the user is in it -->
+        <activity android:name="com.applovin.adview.AppLovinFullscreenActivity" android:exported="false"/>
+        <activity android:name=".Main" android:exported="true">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity>
+    </application>
+</manifest>
