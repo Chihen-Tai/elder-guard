@@ -1,6 +1,6 @@
-<p align="center"><img src="docs/images/icon.png" width="96" alt="Elder Guard icon"></p>
+<p align="center"><img src="docs/images/icon.png" width="96" alt="fkAd icon"></p>
 
-<h1 align="center">Elder Guard (守門員)</h1>
+<h1 align="center">fkAd (守門員)</h1>
 
 <p align="center">
 Helps older people find and stop the apps that keep throwing full-screen ads<br>
@@ -25,7 +25,7 @@ A familiar story: someone installs a "PDF reader", "QR scanner" or "phone cleane
 full-screen ads appear over whatever they are doing, or notifications shout "Virus detected! Clean now!". A younger
 person can tell which app is behind it; an older person usually just concludes that the phone is broken.
 
-Elder Guard answers one question — **which app is doing this** — and walks the user through removing it.
+fkAd answers one question — **which app is doing this** — and walks the user through removing it.
 
 ## Features
 
@@ -61,7 +61,7 @@ fonts, and Back always goes one page back. See [docs/DESIGN-NOTES.md](docs/DESIG
 
 ## Install (test build)
 
-1. Download `elder-guard-0.5.0-debug.apk` from [Releases](../../releases). Android 8.0 or newer.
+1. Download `fkAd-0.5.0-debug.apk` from [Releases](../../releases). Android 8.0 or newer.
 2. Open the app → Settings, and turn on everything under "protection permissions": Usage access, Notification access,
    Notifications, Unrestricted battery.
 3. **OPPO / realme (ColorOS):** also enable App info → Battery usage → "Allow background activity".

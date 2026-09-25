@@ -39,7 +39,7 @@ object Diagnostics {
         val events = s.readLog()
         val diag = s.readDiag()
         return buildString {
-            appendLine("# 守門員記錄檔 / Elder Guard log")
+            appendLine("# 守門員記錄檔 / fkAd log")
             appendLine("app=${versionName(c)} (${versionCode(c)})")
             appendLine("device=${device()}")
             appendLine("rom=${Build.DISPLAY}")

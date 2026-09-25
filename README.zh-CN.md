@@ -1,6 +1,6 @@
 <p align="center"><img src="docs/images/icon.png" width="96" alt="守门员图标"></p>
 
-<h1 align="center">守门员 Elder Guard</h1>
+<h1 align="center">守门员 fkAd</h1>
 
 <p align="center">
 帮老人找出、关掉“一直弹广告、假装手机中毒”的应用。<br>
@@ -62,7 +62,7 @@
 
 ## 安装（测试版）
 
-1. 到 [Releases](../../releases) 下载 `elder-guard-0.5.0-debug.apk` 并安装。需要 Android 8.0 以上。
+1. 到 [Releases](../../releases) 下载 `fkAd-0.5.0-debug.apk` 并安装。需要 Android 8.0 以上。
 2. 打开守门员，点“设置”，按界面把“保护功能需要的权限”全部打开：使用情况访问权限、通知使用权、通知权限、不限制电池。
 3. **OPPO／realme／一加（ColorOS）**：另外到“应用信息 → 耗电管理”打开“允许应用后台行为”。
 4. **vivo**：如果电池页只看到开关，请点“允许后台使用”这几个字，再选“不限制”。

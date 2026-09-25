@@ -1,6 +1,6 @@
 # 守門員判定演算法（EGDA）v0.4 規格
 
-> Elder Guard Detection Algorithm。取代 `REVIEW-STANDARD.md` v0.1 成為唯一的正式規格；`REVIEW-STANDARD.md` 改為給一般人看的白話摘要。
+> Elder Guard Detection Algorithm（Elder Guard 是本專案早期的暫名，英文名稱現為 fkAd）。取代 `REVIEW-STANDARD.md` v0.1 成為唯一的正式規格；`REVIEW-STANDARD.md` 改為給一般人看的白話摘要。
 > 狀態：**參考實作完成（`engine/egda.py`，規則 `engine/rules.json` v0.4.1）。誤判門檻通過；靜態召回率 80%，未達 90% 門檻**（第 11 節）。
 > 原則：全部在手機上離線計算；判定可以解釋；**寧可漏報，也不能誤判正常 App**（誤判會讓長輩不敢用手機，也會讓人不再相信守門員）。
 
