@@ -8,7 +8,7 @@ or fake "your phone is infected" warnings. Everything runs on the phone —
 <b>the app has no internet permission</b>.
 </p>
 
-<p align="center"><a href="README.md">繁體中文</a> ｜ <b>English</b></p>
+<p align="center"><a href="README.md">繁體中文</a> ｜ <a href="README.zh-CN.md">简体中文</a> ｜ <b>English</b></p>
 
 <p align="center">
 <img src="docs/images/home.jpg" width="30%" alt="Home">

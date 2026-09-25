@@ -7,7 +7,7 @@
 所有判斷都在手機上完成，<b>守門員沒有網路權限</b>。
 </p>
 
-<p align="center"><b>繁體中文</b> ｜ <a href="README.en.md">English</a></p>
+<p align="center"><b>繁體中文</b> ｜ <a href="README.zh-CN.md">简体中文</a> ｜ <a href="README.en.md">English</a></p>
 
 <p align="center">
 <img src="docs/images/home.jpg" width="30%" alt="首頁">
