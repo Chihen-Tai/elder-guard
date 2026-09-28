@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- DEBUG BUILD ONLY: test harness (never in release). Exported so adb can drive it, but protected by DUMP: the adb
+     shell holds DUMP, other apps cannot get it. Without this, any app could change the guard's settings on the debug
+     APKs that are handed out (security review H1). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity android:name=".debug.DebugHarnessActivity" android:exported="true" android:label="fkAd 測試台" android:launchMode="singleTop"
+            android:permission="android.permission.DUMP"
+            android:theme="@android:style/Theme.Material.Light"/>
+    </application>
+</manifest>

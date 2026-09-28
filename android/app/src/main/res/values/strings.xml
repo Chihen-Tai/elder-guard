@@ -1,6 +1,6 @@
 <resources>
     <!-- launcher / system settings name; the Chinese name 守門員 is shown inside the app -->
     <string name="app_name">fkAd</string>
-    <string name="ad_closer_summary">自動關閉連續跳出的廣告</string>
-    <string name="ad_closer_description">開啟後，如果同一個 App 在您使用別的 App 時，30 分鐘內第二次跳出全螢幕廣告，守門員會自動按「返回」把它關掉；關不掉時會回到桌面。第一次跳出不會動作。守門員只看是哪個 App 的哪個畫面跳出來，不會讀取畫面上的文字或您輸入的內容，也不會連上網路。</string>
+    <string name="ad_closer_summary">關閉連續跳出的廣告，防止 App 亂跳到別的 App</string>
+    <string name="ad_closer_description">開啟後，守門員會做兩件事：\n\n1. 同一個 App 在 30 分鐘內第二次跳出全螢幕廣告，自動按「返回」把它關掉。\n\n2. 防止亂跳 App：您沒有按任何東西，某個 App 卻突然把您帶到購物 App、商店或瀏覽器時，守門員會把您帶回原本的 App，或先問您。\n\n守門員只看「哪個 App 的哪個畫面出現」和「您剛才有沒有點按」，不會讀取畫面上的文字、您輸入的內容或密碼，也不會把任何資料傳出去。</string>
 </resources>

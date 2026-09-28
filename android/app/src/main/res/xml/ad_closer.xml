@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Minimal accessibility footprint: window-state events only, no window content, no gestures beyond global BACK/HOME. -->
+<!-- Minimal accessibility footprint: window changes + tap/scroll events, of which only package, view class and time
+     are used (Android attaches the tapped view's text; the code never reads it). No window content
+     (canRetrieveWindowContent=false), no gestures beyond global BACK/HOME. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeViewClicked|typeViewLongClicked|typeViewScrolled"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:notificationTimeout="50"
+    android:notificationTimeout="100"
     android:canRetrieveWindowContent="false"
     android:isAccessibilityTool="false"
     android:description="@string/ad_closer_description"

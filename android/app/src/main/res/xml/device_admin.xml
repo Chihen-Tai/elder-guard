@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Device-owner admin for OPTIONAL strict mode. No classic device-admin policies are requested (no wipe, no password
+     rules, no camera control): lock-task and app suspension are device-owner APIs that need no policy entry. -->
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-policies/>
+</device-admin>

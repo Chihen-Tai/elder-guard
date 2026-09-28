@@ -106,103 +106,6 @@ data class SettingsState(
 
 // ---------------------------------------------------------------- building blocks
 
-private val CardShape = RoundedCornerShape(24.dp)
-private val ButtonShape = RoundedCornerShape(18.dp)
-
-@Composable
-private fun Page(bottom: (@Composable () -> Unit)? = null, content: @Composable () -> Unit) {
-    Column(Modifier.fillMaxSize().background(Palette.Paper).statusBarsPadding().navigationBarsPadding()) {
-        Column(
-            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
-        ) { content() }
-        if (bottom != null) {
-            Surface(color = Palette.Card, shadowElevation = 12.dp, modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(horizontal = 24.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { bottom() }
-            }
-        }
-    }
-}
-
-@Composable
-private fun BrandBar(onBack: (() -> Unit)? = null, onSettings: (() -> Unit)? = null) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        // same mark and name as the launcher icon, so the app on the home screen is easy to connect with this screen
-        Image(painterResource(R.drawable.brand_mark), contentDescription = null, modifier = Modifier.size(36.dp))
-        Spacer(Modifier.size(10.dp))
-        Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.weight(1f)) {
-            Text("fkAd", style = MaterialTheme.typography.titleLarge, color = Palette.Trust)
-            Spacer(Modifier.size(8.dp))
-            Text("守門員", style = MaterialTheme.typography.bodyMedium, color = Palette.InkSoft)
-        }
-        if (onBack != null) TextButton(onClick = onBack) { Text("回首頁", style = MaterialTheme.typography.labelMedium, color = Palette.Trust) }
-        if (onSettings != null) OutlinedButton(onClick = onSettings, shape = ButtonShape, border = BorderStroke(1.5.dp, Palette.Trust),
-            modifier = Modifier.heightIn(min = 48.dp)) { Text("設定", style = MaterialTheme.typography.labelMedium, color = Palette.Trust) }
-    }
-}
-
-@Composable
-private fun SwitchRow(title: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)
-        .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)) {
-        Text(title, style = MaterialTheme.typography.titleLarge, color = Palette.Ink, modifier = Modifier.weight(1f))
-        Spacer(Modifier.size(12.dp))
-        Switch(checked = checked, onCheckedChange = null, colors = SwitchDefaults.colors(checkedTrackColor = Palette.Safe))
-    }
-}
-
-@Composable
-private fun StatusLine(ok: Boolean, name: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Dot(if (ok) Palette.Safe else Palette.Caution)
-        Spacer(Modifier.size(12.dp))
-        Text(name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-        Text(if (ok) "已開啟" else "沒有開啟", style = MaterialTheme.typography.bodyMedium, color = if (ok) Palette.Safe else Palette.Caution)
-    }
-}
-
-@Composable
-private fun PrimaryButton(text: String, onClick: () -> Unit, color: Color = Palette.Trust) {
-    Button(onClick = onClick, shape = ButtonShape, colors = ButtonDefaults.buttonColors(containerColor = color, contentColor = Color.White),
-        modifier = Modifier.fillMaxWidth().heightIn(min = 68.dp)) { Text(text, style = MaterialTheme.typography.labelLarge) }
-}
-
-@Composable
-private fun SecondaryButton(text: String, onClick: () -> Unit) {
-    OutlinedButton(onClick = onClick, shape = ButtonShape, border = BorderStroke(2.dp, Palette.Trust),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = Palette.Trust, containerColor = Palette.Card),
-        modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) { Text(text, style = MaterialTheme.typography.labelLarge) }
-}
-
-@Composable
-private fun QuietButton(text: String, onClick: () -> Unit) {
-    TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
-        Text(text, style = MaterialTheme.typography.labelMedium, color = Palette.InkSoft)
-    }
-}
-
-@Composable
-private fun Icon(bmp: ImageBitmap?, size: Int = 64) {
-    val m = Modifier.size(size.dp).clip(RoundedCornerShape(16.dp))
-    if (bmp != null) Image(bmp, contentDescription = null, modifier = m) else Box(m.background(Palette.Line))
-}
-
-@Composable
-private fun Bullet(text: String, color: Color) {
-    Row(verticalAlignment = Alignment.Top) {
-        Box(Modifier.padding(top = 12.dp)) { Dot(color) }
-        Spacer(Modifier.size(14.dp))
-        Text(text, style = MaterialTheme.typography.bodyLarge, color = Palette.Ink)
-    }
-}
-
-@Composable
-private fun Card(color: Color = Palette.Card, border: Boolean = true, content: @Composable () -> Unit) {
-    Surface(shape = CardShape, color = color, border = if (border) BorderStroke(1.dp, Palette.Line) else null, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { content() }
-    }
-}
-
 private fun iconText(s: AppRow.IconState) = when (s) {
     AppRow.IconState.VISIBLE -> "有"
     AppRow.IconState.HIDDEN -> "被藏起來了"
@@ -245,8 +148,12 @@ fun HomeScreen(
     onSettings: () -> Unit,
     onConsent: (Boolean) -> Unit,
     onCall165: () -> Unit,
+    protection: ProtectionHome? = null,
+    onSetup: () -> Unit = {},
+    onUnlock: () -> Unit = {},
 ) = Page {
     BrandBar(onSettings = onSettings)
+    protection?.let { ProtectionCard(it, onSetup, onUnlock) }
     val found = s.flagged.isNotEmpty()
     Surface(shape = CardShape, color = if (found) Palette.CautionSoft else Palette.TrustSoft, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -303,7 +210,7 @@ fun HomeScreen(
         Text("先掛掉，再打 165 問問看。\n免費，有真人接聽。", style = MaterialTheme.typography.bodyMedium, color = Palette.InkSoft)
         SecondaryButton("撥打 165", onCall165)
     }
-    QuietButton("設定（權限、自動關廣告、記錄檔）", onSettings)
+    QuietButton("設定（保護功能、權限、記錄檔）", onSettings)
 }
 
 @Composable
@@ -315,10 +222,20 @@ fun SettingsScreen(
     onExport: () -> Unit,
     onUnkeep: (String) -> Unit,
     onAllApps: () -> Unit,
+    onProtection: () -> Unit = {},
+    onRedirect: () -> Unit = {},
+    onAdvanced: () -> Unit = {},
 ) = Page {
     BrandBar(onBack)
     Text("設定", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
     s.message?.let { Card(Palette.TrustSoft, border = false) { Text(it, style = MaterialTheme.typography.bodyLarge) } }
+
+    Card {
+        Text("長輩保護", style = MaterialTheme.typography.titleLarge, color = Palette.Trust)
+        SecondaryButton("廣告防護", onProtection)
+        SecondaryButton("防止亂跳 App", onRedirect)
+        SecondaryButton("進階設定", onAdvanced)
+    }
 
     Card {
         Text("保護功能需要的權限", style = MaterialTheme.typography.titleLarge, color = Palette.Trust)
@@ -352,7 +269,7 @@ fun SettingsScreen(
         if (s.diagOn) Text(if (s.diagCount == 0) "目前還沒有記錄。" else "目前有 ${s.diagCount} 筆，\n從 ${s.diagSince}\n開始記錄。",
             style = MaterialTheme.typography.bodyMedium, color = Palette.Safe)
         SecondaryButton("匯出記錄檔", onExport)
-        Text("按下去會出現分享選單，\n由您決定傳給誰，\n例如用 LINE 或 Email。\n守門員沒有網路權限，\n不會自己上傳。",
+        Text("按下去會出現分享選單，\n由您決定傳給誰，\n例如用 LINE 或 Email。\n守門員不會自己上傳\n任何記錄。",
             style = MaterialTheme.typography.bodyMedium, color = Palette.InkSoft)
     }
 

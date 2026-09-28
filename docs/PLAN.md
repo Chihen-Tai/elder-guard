@@ -58,7 +58,7 @@
 └────────────────────────────────────────┘
 ```
 
-- **權限（MVP）**：`QUERY_ALL_PACKAGES`、`POST_NOTIFICATIONS`、`USE_FULL_SCREEN_INTENT`、`RECEIVE_BOOT_COMPLETED`、`REQUEST_DELETE_PACKAGES`。MVP 不做遠端推送，所以**連 `INTERNET` 都不需要**：守門員完全離線，也不可能外洩資料。**不需要**無障礙、使用情況存取或通知存取
+- **權限（MVP）**：`QUERY_ALL_PACKAGES`、`POST_NOTIFICATIONS`、`USE_FULL_SCREEN_INTENT`、`RECEIVE_BOOT_COMPLETED`、`REQUEST_DELETE_PACKAGES`。MVP 不做遠端推送，所以**連 `INTERNET` 都不需要**：守門員完全離線，也不可能外洩資料。**不需要**無障礙、使用情況存取或通知存取（0.6.0 起為了廣告防護加入 `INTERNET`，見第 8 節 2026-09-29）
 - **彈窗的實作方式**：Android 10 以後，App 不能從背景直接啟動畫面。做法是**高優先級通知 + 全螢幕 intent**：Android 14 以後需要在設定中開啟「全螢幕通知」，首次設定時由家人協助開啟。如果沒有開啟，就改為 heads-up 通知，並在長輩下次解鎖或打開守門員時顯示說明頁。**不使用「顯示在其他 App 上層」**，因為這是詐騙 App 最常濫用的權限
 - **家人通知管道**：MVP 不做（見第 8 節）；以後可選 ntfy（可自架）、Telegram bot、email，大陸版用企業微信。LINE Notify 已於 2025-03 停止服務
 - **技術棧**：Kotlin、Jetpack Compose、WorkManager；minSdk 26，targetSdk 36
@@ -110,6 +110,12 @@
 | 2026-09-25 | 設定頁、資料蒐集、記錄檔（0.5.0） | 新增「設定」頁：權限、自動關廣告、記錄診斷資料開關、匯出記錄檔、恢復提醒、看所有 App。首頁只留檢查按鈕與一張監測狀態卡。**資料蒐集預設不開**，首頁問一次，可在設定改；關掉時刪除診斷記錄。App 仍然**沒有網路權限**，記錄檔要使用者自己按「匯出」走系統分享 |
 | 2026-09-25 | 返回鍵 | 手機的返回鍵一次退一頁（明細 → 清單 → 設定 → 首頁），只有在首頁按返回才離開 App（0.4.1 以前會直接回桌面） |
 | 2026-09-26 | App 名稱 | 中文「守門員」，英文「**fkAd**」（圖示是手繪的「fk Ad」）。程式套件名稱維持 `org.elderguard`，改掉會讓已安裝的版本無法更新 |
+| 2026-09-29 | 長輩保護平台（0.6.0） | 使用者要求加入：本機 VPN 廣告防護、防止亂跳 App（跨 App 意圖保護）、嚴格模式（Device Owner）、首頁「長輩保護」一鍵開啟。設計、限制、實測見 [PROTECTION.md](PROTECTION.md) |
+| 2026-09-29 | `INTERNET` 權限 | **取代「不加 INTERNET」的約束**（使用者決定）：VPN 轉送 DNS 一定要網路 socket，沒有替代的 API。只允許兩個用途：VPN 轉送放行的 DNS 查詢、使用者開啟時下載過濾清單。App 檢查、跳轉判斷、通知判斷維持不連網；不上傳任何使用者資料。README、App 內文字同步改寫，不再宣稱「沒有網路權限」 |
+| 2026-09-29 | 遠端規則 | 過濾清單**內建一份（StevenBlack，MIT），遠端更新預設關閉**（使用者決定）。只下載純文字清單，從不下載程式碼；暫存 → 解析 → 驗證 → 原子替換，失敗保留舊版。EGDA 的 `rules.json` 仍只隨版本更新 |
+| 2026-09-29 | 無障礙事件 | 原本只收視窗切換；為了判斷「使用者有沒有點按」，加收點按、長按、捲動事件。仍然 `canRetrieveWindowContent=false`，程式不讀事件文字，只用套件名、元件類別與時間 |
+| 2026-09-29 | BlockAds | 研究其架構（GPL-3.0，與本專案相容），但**不複製程式碼**、不採用其全流量 tunnel（gVisor/tun2socks），改用自行實作的 DNS-only tunnel；不做 MITM、CA、root、WireGuard |
+| 2026-09-29 | Play 上架 | VPN 廣告封鎖很可能違反 Play 的「不得干擾其他 App 廣告」政策；若要上架，Play 版需移除廣告防護（見 PROTECTION.md §11） |
 
 ## 9. 資料與 repo 規則（為開源預作準備）
 

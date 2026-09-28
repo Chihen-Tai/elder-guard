@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="vpn_session">fkAd 廣告防護</string>
+    <string name="vpn_channel">廣告防護</string>
+    <string name="vpn_starting">廣告防護正在啟動</string>
+    <string name="vpn_running_title">長輩防護已啟用</string>
+    <string name="vpn_running_text">今天已阻止 %1$d 個廣告／追蹤請求</string>
+    <string name="vpn_paused">廣告防護暫停中，%1$s 自動恢復</string>
+    <string name="vpn_pause_15">暫停 15 分鐘</string>
+    <string name="vpn_resume">現在恢復</string>
+    <string name="vpn_open_app">打開守門員</string>
+    <string name="vpn_retry">再試一次</string>
+    <string name="vpn_failed_title">廣告防護暫時停止</string>
+    <string name="vpn_failed_text">網路仍可正常使用。守門員的廣告防護出了問題，已先關掉，避免影響上網。</string>
+</resources>

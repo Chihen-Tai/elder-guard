@@ -133,6 +133,8 @@ class GuardService : Service() {
     private fun checkNewApp(pkg: String) {
         val e = runCatching { scanner.scan(pkg) }.getOrNull() ?: return
         val v = StaticRisk.assess(e.facts)
+        // anti-redirect AUTO mode protects user apps with an ad SDK: a new app is covered from its first check
+        org.elderguard.redirect.ProtectedAppManager.get(this).addAdApp(pkg, !e.facts.isSystem && e.facts.adNetworks.isNotEmpty())
         store.diag("scan", pkg, Diagnostics.scanFields(e.facts, v) + ("src" to "new_app"))
         if (v.level == RiskLevel.HIGH || v.level == RiskLevel.MEDIUM) Alerts.maybeAlertNewApp(this, pkg, v.reasons.firstOrNull() ?: "")
     }
@@ -150,6 +152,12 @@ class GuardService : Service() {
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
-        if (i.action == Intent.ACTION_BOOT_COMPLETED || i.action == Intent.ACTION_MY_PACKAGE_REPLACED) GuardService.start(c)
+        if (i.action != Intent.ACTION_BOOT_COMPLETED && i.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
+        GuardService.start(c)
+        // Ad blocking comes back after a reboot only if the user left it on and Android still has their consent.
+        org.elderguard.vpn.VpnController.resumeIfWanted(c)
+        // Strict mode comes back only after boot has completed, so a reboot can never trap the user before the phone is up.
+        if (i.action == Intent.ACTION_BOOT_COMPLETED) org.elderguard.owner.StrictModeManager(c).resumeAfterBoot()
+        org.elderguard.filter.FilterUpdateJob.schedule(c)
     }
 }

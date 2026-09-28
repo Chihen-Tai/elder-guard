@@ -18,13 +18,16 @@ import org.elderguard.detect.PopupPolicy
 import org.elderguard.scan.AppScanner
 
 /**
- * OPTIONAL ad-closer (off until the family turns it on in Android's accessibility settings).
+ * The guard's accessibility service (off until the family turns it on in Android's accessibility settings). Two jobs:
+ *  - pop-up closer: closes a full-screen ad page another app put over the user's app, from the 2nd time the same
+ *    app does it within 30 minutes (PopupPolicy);
+ *  - anti-redirect (RedirectGuard): notices when a protected app sends the user to another app without being asked.
  *
- * Minimal footprint by design: it only receives "window state changed" events (package + class name) and
- * canRetrieveWindowContent is false, so it never reads what is on screen. Its only actions are BACK and, if an ad
- * page refuses to close, HOME.
- *
- * It closes a pop-up only from the 2nd time the same app pops up over other apps within 30 minutes (PopupPolicy).
+ * Minimal footprint by design: it uses window changes (package + class name) and tap / scroll events (package + view
+ * class name only). canRetrieveWindowContent is false, so the screen's content tree is not available. Android still
+ * attaches the tapped view's text to a click event; this service never reads it (no getText / getSource anywhere),
+ * and nothing about the event except package, class and time is kept. Its only actions are BACK, HOME, reopening the app the user was in, and asking.
+ * The class name stays "AdCloserService": renaming it would silently switch the service off for existing users.
  */
 class AdCloserService : AccessibilityService() {
     private val h = Handler(Looper.getMainLooper())
@@ -58,15 +61,30 @@ class AdCloserService : AccessibilityService() {
         store.readLog(System.currentTimeMillis() - 30 * 60 * 1000L).filter { it.optString("type") == "intrusion" }
             .forEach { policy.seed(it.optString("pkg"), it.optLong("t")) }
         store.diag("closer", fields = mapOf("state" to "on"))
+        guard = runCatching { org.elderguard.redirect.RedirectGuard(this) }.getOrNull()
+        org.elderguard.redirect.RedirectGuard.instance = guard
+        registerReceiver(screenOff, android.content.IntentFilter(Intent.ACTION_SCREEN_OFF))
+        connected = true
+    }
+
+    private var guard: org.elderguard.redirect.RedirectGuard? = null
+    private val screenOff = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) { guard?.onScreenOff() }
     }
 
     private var lastAdPkg: String? = null
     private var lastAdMs = 0L
 
     override fun onAccessibilityEvent(e: AccessibilityEvent) {
-        if (e.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = e.packageName?.toString() ?: return
         val cls = e.className?.toString()
+        when (e.eventType) {
+            // only WHO was tapped (package + view class), never the text: enough to tell a tap from an automatic jump
+            AccessibilityEvent.TYPE_VIEW_CLICKED, AccessibilityEvent.TYPE_VIEW_LONG_CLICKED -> { guard?.engine?.onClick(pkg, cls, System.currentTimeMillis()); return }
+            AccessibilityEvent.TYPE_VIEW_SCROLLED -> { guard?.engine?.onScroll(pkg, System.currentTimeMillis()); return }
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {}
+            else -> return
+        }
         val before = policy.current()
         val d = policy.onWindow(pkg, cls, System.currentTimeMillis())
         // Every ad window and the decision taken: lets a field log explain a missed or wrong close.
@@ -76,6 +94,8 @@ class AdCloserService : AccessibilityService() {
         // Also the other windows of an app that just showed an ad (overlays, dialogs): they explain chained pop-ups.
         if (isAd || (pkg == lastAdPkg && now - lastAdMs < 5 * 60_000L))
             store.diag("win", pkg, mapOf("cls" to cls?.substringAfterLast('.'), "prev" to before, "intr" to d.intrusion, "n" to d.count, "block" to d.block))
+        // the pop-up closer acts first; when it closes the window, anti-redirect only records the switch
+        guard?.onWindow(pkg, cls, now, popupHandled = d.block)
         if (!d.intrusion) return
         store.log("intrusion", pkg, mapOf("cls" to cls, "over" to d.coveredPackage, "kind" to "AdOverOtherApp", "src" to "closer"))
         if (!d.block) return // first pop-up: record only (user's policy: close only repeated pop-ups)
@@ -120,12 +140,24 @@ class AdCloserService : AccessibilityService() {
 
     override fun onInterrupt() {}
 
+    override fun onUnbind(intent: Intent?): Boolean {
+        connected = false
+        return super.onUnbind(intent)
+    }
+
     override fun onDestroy() {
+        connected = false
         if (::store.isInitialized) store.diag("closer", fields = mapOf("state" to "off"))
+        guard?.stop(); guard = null
+        org.elderguard.redirect.RedirectGuard.instance = null
+        runCatching { unregisterReceiver(screenOff) }
         super.onDestroy()
     }
 
     companion object {
+        /** True while Android has the service bound (the setting alone can say "on" while an OEM has stopped it). */
+        @Volatile var connected = false
+
         fun isEnabled(c: Context): Boolean {
             val cn = ComponentName(c, AdCloserService::class.java).flattenToString()
             val list = Settings.Secure.getString(c.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false

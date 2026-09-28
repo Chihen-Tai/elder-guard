@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TEST ONLY: a "game" that reproduces ad redirects (auto jump, ad "X" click-through, shake, loop) and normal
+     user-initiated app switches, for the anti-redirect emulator test. INTERNET is used only by the DNS benchmark
+     (name lookups through the ad-blocking VPN); nothing is downloaded. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <queries>
+        <package android:name="org.elderguard.testing.shop"/>
+        <package android:name="com.google.android.youtube"/>
+        <intent><action android:name="android.intent.action.VIEW"/><data android:scheme="https"/></intent>
+        <intent><action android:name="android.intent.action.VIEW"/><data android:scheme="market"/></intent>
+    </queries>
+    <application android:label="測試用小遊戲">
+        <activity android:name=".Main" android:exported="true" android:launchMode="singleTop">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity>
+        <!-- same class name as AppLovin's full-screen ad page -->
+        <activity android:name="com.applovin.adview.AppLovinFullscreenActivity" android:exported="false"/>
+    </application>
+</manifest>

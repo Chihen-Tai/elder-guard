@@ -15,7 +15,22 @@ import org.elderguard.detect.NotificationClassifier
  * UsageMonitor / the app detail screen.
  */
 class NotificationWatcher : NotificationListenerService() {
+    /** Anti-redirect: which apps have a notification showing (a tap on one of them opens that app legitimately). */
+    private fun refreshActive() {
+        org.elderguard.redirect.RedirectGuard.activeNotificationPackages =
+            runCatching { activeNotifications.map { it.packageName }.toSet() }.getOrDefault(emptySet())
+    }
+
+    override fun onListenerConnected() = refreshActive()
+
+    override fun onNotificationRemoved(sbn: StatusBarNotification, rankingMap: RankingMap, reason: Int) {
+        // REASON_CLICK: the user tapped it. Only the package is used, as a short-lived "the user asked" signal.
+        if (reason == REASON_CLICK) org.elderguard.redirect.RedirectGuard.instance?.engine?.onNotificationTap(sbn.packageName, System.currentTimeMillis())
+        refreshActive()
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification) {
+        refreshActive()
         if (sbn.packageName == packageName) return
         val n = sbn.notification ?: return
         val ex = n.extras

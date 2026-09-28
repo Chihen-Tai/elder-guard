@@ -49,6 +49,60 @@ class MainActivity : ComponentActivity() {
         data object List : Screen
         data class Detail(val pkg: String) : Screen
         data object Settings : Screen
+        data object Setup : Screen
+        data object Advanced : Screen
+        data object Vpn : Screen
+        data object VpnApps : Screen
+        data object Filters : Screen
+        data object DnsHistory : Screen
+        data object Redirect : Screen
+        data object ProtectedApps : Screen
+        data object RedirectHistory : Screen
+        data object Diagnostics : Screen
+        data object Strict : Screen
+    }
+
+    private lateinit var pc: ProtectionController
+    private val vpnConsent = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { r ->
+        if (r.resultCode == RESULT_OK) org.elderguard.vpn.VpnController.start(this)
+        lifecycleScope.launch { kotlinx.coroutines.delay(1500); refreshProtection() }
+    }
+
+    /** Ad blocking: Android shows its own "allow VPN connection?" dialog the first time. */
+    fun requestVpn() {
+        val consent = runCatching { org.elderguard.vpn.VpnController.consentIntent(this) }.getOrNull()
+        if (consent != null) runCatching { vpnConsent.launch(consent) } else {
+            org.elderguard.vpn.VpnController.start(this)
+            lifecycleScope.launch { kotlinx.coroutines.delay(1500); refreshProtection() }
+        }
+    }
+
+    fun startScan() = scanAll()
+
+    private fun refreshProtection() {
+        val c = Capabilities.read(this)
+        caps = c
+        pc.refreshHome(c, rows.values.count { it.installed && it.flagged && !store.isKept(it.packageName) })
+        when (screen) {
+            Screen.Vpn -> pc.refreshVpn()
+            Screen.Diagnostics -> pc.refreshDiagnostics(c)
+            else -> {}
+        }
+    }
+
+    private fun open(s: Screen) {
+        when (s) {
+            Screen.Vpn -> pc.refreshVpn()
+            Screen.VpnApps -> pc.loadVpnApps()
+            Screen.Filters -> pc.refreshFilters()
+            Screen.DnsHistory -> pc.refreshDns()
+            Screen.ProtectedApps -> pc.loadProtectedApps()
+            Screen.RedirectHistory -> pc.refreshRedirectHistory()
+            Screen.Diagnostics -> pc.refreshDiagnostics(Capabilities.read(this))
+            Screen.Strict -> pc.refreshStrict()
+            else -> {}
+        }
+        go(s)
     }
 
     /** Pages the user walked through; the phone's Back key goes one step back, and only leaves the app from Home. */
@@ -68,6 +122,8 @@ class MainActivity : ComponentActivity() {
     private var lookupMessage by mutableStateOf<String?>(null)
     private var caps by mutableStateOf<Capabilities?>(null)
     private var showSystem by mutableStateOf(false)
+    /** User apps whose scan found an ad SDK (collected during a full scan). */
+    private val adAppsSeen = java.util.Collections.synchronizedSet(HashSet<String>())
     private lateinit var store: Store
     /** Pop-up times per package from the last usage-history query (24 h). */
     @Volatile private var usageTimes: Map<String, List<Long>> = emptyMap()
@@ -83,6 +139,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         store = Store(this)
+        pc = ProtectionController(this)
         consent = store.diagConsent
         GuardService.start(this)
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -96,11 +153,43 @@ class MainActivity : ComponentActivity() {
                 when (val s = screen) {
                     Screen.Home -> HomeScreen(homeState(), ::findRecent, ::scanAll, { go(Screen.Detail(it.packageName)) },
                         onSettings = ::openSettings, onConsent = ::setConsent,
-                        onCall165 = { safeStart(Intent(Intent.ACTION_DIAL, Uri.parse("tel:165"))) })
+                        onCall165 = { safeStart(Intent(Intent.ACTION_DIAL, Uri.parse("tel:165"))) },
+                        protection = pc.home, onSetup = { go(Screen.Setup) }, onUnlock = { go(Screen.Redirect) })
+                    Screen.Setup -> org.elderguard.ui.SetupScreen(pc.parts(caps ?: Capabilities.read(this)), ::home)
+                    Screen.Advanced -> org.elderguard.ui.AdvancedScreen(listOf(
+                        "廣告防護（VPN）" to { open(Screen.Vpn) },
+                        "過濾清單與自訂規則" to { open(Screen.Filters) },
+                        "DNS 紀錄" to { open(Screen.DnsHistory) },
+                        "防止亂跳 App" to { open(Screen.Redirect) },
+                        "受保護的 App" to { open(Screen.ProtectedApps) },
+                        "跳轉紀錄" to { open(Screen.RedirectHistory) },
+                        "嚴格模式（裝置擁有者）" to { open(Screen.Strict) },
+                        "診斷" to { open(Screen.Diagnostics) },
+                    ), ::back)
+                    Screen.Vpn -> pc.vpnPage?.let { v -> org.elderguard.ui.VpnScreen(v, pc::setVpn, pc::setUpstream, pc::setModeAll, { open(Screen.VpnApps) },
+                        { safeStart(Intent(android.provider.Settings.ACTION_VPN_SETTINGS)) }, { open(Screen.Filters) }, { open(Screen.DnsHistory) }, ::back) }
+                    Screen.VpnApps -> org.elderguard.ui.AppPickerScreen(
+                        if (pc.vpnPage?.appModeAll != false) "不經過廣告防護的 App" else "要擋廣告的 App",
+                        if (pc.vpnPage?.appModeAll != false) "銀行、公司、VPN 類 App\n如果出問題，可以排除。" else "只有打開的 App\n會經過廣告防護。",
+                        pc.appList, pc::toggleVpnApp) { back(); pc.refreshVpn() }
+                    Screen.Filters -> pc.filtersPage?.let { f -> org.elderguard.ui.FiltersScreen(f, pc::enableList, pc::updateNow, pc::rollback, pc::removeList,
+                        pc::setRemote, pc::setWifiOnly, pc::addList, pc::addRule, pc::removeRule, ::back, pc::setInterval) }
+                    Screen.DnsHistory -> org.elderguard.ui.DnsHistoryScreen(org.elderguard.vpn.DnsStats.get(this).historyOn, pc.dnsRows, pc::setDnsHistory,
+                        { d, b -> pc.dnsRule(d, b); pc.refreshDns() }, ::back)
+                    Screen.Redirect -> org.elderguard.ui.RedirectScreen(pc.redirectOn, pc.redirectServiceOk, pc.protectedModeName, protectedCount,
+                        pc.redirectRules(), unlockLeft, { pc.setRedirect(it); tick++ }, { safeStart(org.elderguard.monitor.AdCloserService.settingsIntent(this)) },
+                        { open(Screen.ProtectedApps) }, { pc.unlock(it); tick++ }, { pc.cancelUnlock(); tick++ }, { f, t -> pc.removeRedirectRule(f, t); tick++ },
+                        { open(Screen.RedirectHistory) }, ::back)
+                    Screen.ProtectedApps -> org.elderguard.ui.ProtectedAppsScreen(pc.protectedMode, pc.appList, pc::setProtectedMode, pc::toggleProtected, ::back)
+                    Screen.RedirectHistory -> org.elderguard.ui.RedirectHistoryScreen(pc.redirectRows, pc::allowRedirect, ::back)
+                    Screen.Diagnostics -> org.elderguard.ui.DiagnosticsScreen(pc.diagRows, ::exportLog, { safeStart(Capabilities.batteryIntent(this)) }, ::back)
+                    Screen.Strict -> pc.strictPage?.let { st -> org.elderguard.ui.StrictScreen(st, pc::setPin, pc::enterStrict, pc::exitStrict, pc::strictAllow,
+                        pc::suspend, pc::release, ::back) }
                     Screen.List -> AppListScreen(
                         rows.values.filter { showSystem || !it.isSystem }.sortedWith(compareByDescending<AppRow> { it.flagged }.thenBy { it.label }),
                         showSystem, { showSystem = !showSystem }, { go(Screen.Detail(it.packageName)) }, ::home)
                     Screen.Settings -> SettingsScreen(settingsState(), onBack = ::home,
+                        onProtection = { open(Screen.Vpn) }, onRedirect = { open(Screen.Redirect) }, onAdvanced = { go(Screen.Advanced) },
                         onCloserSettings = { safeStart(org.elderguard.monitor.AdCloserService.settingsIntent(this)) },
                         onDiag = ::setConsent, onExport = ::exportLog,
                         onUnkeep = { store.setKept(it, false); store.diag("user_unkeep", it); loadSettingsInfo() },
@@ -134,15 +223,25 @@ class MainActivity : ComponentActivity() {
         intent.getStringExtra(EXTRA_OPEN_PKG)?.let { openFromAlert(it) }
     }
 
+    /** Recomposes pages that show a countdown or a value read on the fly. */
+    private var tick by mutableStateOf(0)
+    private val unlockLeft get() = tick.let { org.elderguard.redirect.RedirectGuard.sharedUnlock.remainingMs() / 1000 }
+    private val protectedCount get() = tick.let { pc.protectedCount() }
+
     override fun onResume() {
         super.onResume()
+        // strict mode (device owner only): keep the phone in lock-task mode while it is on
+        runCatching { org.elderguard.owner.StrictModeManager(this).ensureLocked(this) }
         caps = Capabilities.read(this)
+        refreshProtection()
+        if (screen == Screen.Vpn) pc.refreshVpn()
+        tick++
         GuardService.start(this)
         // Coming back from Settings (uninstall / notification settings): refresh what we show.
         (screen as? Screen.Detail)?.let { refreshRow(it.pkg) }
         if (screen == Screen.Settings) loadSettingsInfo()
         // the monitor writes its first heartbeat a moment after (re)starting; read the state again then
-        lifecycleScope.launch { kotlinx.coroutines.delay(3_000); caps = Capabilities.read(this@MainActivity) }
+        lifecycleScope.launch { kotlinx.coroutines.delay(3_000); refreshProtection() }
         if (rows.isEmpty() && store.lastScanMs != 0L) scanAll()
     }
 
@@ -277,6 +376,9 @@ class MainActivity : ComponentActivity() {
             }
             rows = built
             store.lastScanMs = System.currentTimeMillis()
+            // anti-redirect "AUTO" mode protects user apps that contain an ad SDK: this scan is its source
+            org.elderguard.redirect.ProtectedAppManager.get(this@MainActivity).setAdApps(adAppsSeen.toSet())
+            refreshProtection()
             store.lastScanFlagged = built.values.count { it.flagged }
             store.diag("scan_all", fields = mapOf("apps" to built.size, "user" to built.values.count { !it.isSystem },
                 "flagged" to built.values.count { it.flagged }, "ms" to System.currentTimeMillis() - t0,
@@ -340,6 +442,7 @@ class MainActivity : ComponentActivity() {
             )
         }
         val v = StaticRisk.assess(e.facts)
+        if (!e.facts.isSystem && e.facts.adNetworks.isNotEmpty()) adAppsSeen += pkg
         // Tuning data: every app with any signal, so both false alarms and misses (e.g. Fast PDF Reader) can be studied.
         if (logScan && !e.facts.isSystem && (v.score > 0 || e.facts.adNetworks.isNotEmpty() || behavior != null))
             store.diag("scan", pkg, Diagnostics.scanFields(e.facts, v) + mapOf("src" to "scan_all", "popups" to behavior?.popups))
@@ -388,7 +491,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Opening a system page must never crash the guard; fall back to the general Settings page. */
-    private fun safeStart(i: Intent) {
+    fun safeStart(i: Intent) {
         try { startActivity(i) } catch (e: Exception) {
             runCatching { startActivity(Intent(android.provider.Settings.ACTION_SETTINGS)) }
             lookupMessage = "這支手機不能直接打開那個設定頁，已經幫您打開「設定」。"

@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- No INTERNET permission, by design: everything is judged on the phone and nothing leaves it. -->
+<!-- INTERNET is used by exactly two things: the ad-blocking VPN forwarding allowed DNS questions upstream (the DNS
+     server the user chose; if it is unreachable, the network's own DNS, shown in Diagnostics), and (only if the user
+     turns it on) downloading filter lists. App scanning, pop-up / redirect detection
+     and notification checks never touch the network, and nothing about the user is ever uploaded. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <!-- see every installed package, including ones without a launcher icon -->
@@ -13,13 +16,17 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- the redirect question hides other apps' overlays while it is shown (no tap-jacking of "以後都允許") -->
+    <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS"/>
 
     <queries>
         <intent><action android:name="android.intent.action.DIAL"/></intent>
     </queries>
 
     <application android:name=".ElderGuardApp" android:label="@string/app_name"
-        android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
@@ -43,11 +50,36 @@
             <meta-data android:name="android.accessibilityservice" android:resource="@xml/ad_closer"/>
         </service>
 
+        <!-- anti-redirect question ("是您要打開的嗎？") and the "仍然開啟" trampoline; internal only -->
+        <activity android:name=".redirect.RedirectPromptActivity" android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" android:excludeFromRecents="true"
+            android:taskAffinity="org.elderguard.prompt" android:launchMode="singleTask"/>
+
         <!-- lets the share sheet read the exported log file (only when the user taps "匯出記錄檔") -->
         <provider android:name="androidx.core.content.FileProvider" android:authorities="org.elderguard.files"
             android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths"/>
         </provider>
+
+        <!-- DNS-only ad-blocking VPN. Only the system may bind it (BIND_VPN_SERVICE). -->
+        <service android:name=".vpn.AdBlockVpnService" android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:foregroundServiceType="specialUse">
+            <intent-filter><action android:name="android.net.VpnService"/></intent-filter>
+            <meta-data android:name="android.net.VpnService.SUPPORTS_ALWAYS_ON" android:value="true"/>
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Local DNS-only VPN that blocks ad and tracker domains on the device; shows the user how many requests were blocked."/>
+        </service>
+
+        <service android:name=".filter.FilterUpdateJob" android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE"/>
+
+        <!-- OPTIONAL strict mode: only active if the family provisions the guard as device owner with adb. -->
+        <receiver android:name=".owner.GuardAdminReceiver" android:exported="true"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data android:name="android.app.device_admin" android:resource="@xml/device_admin"/>
+            <intent-filter><action android:name="android.app.action.DEVICE_ADMIN_ENABLED"/></intent-filter>
+        </receiver>
 
         <receiver android:name=".monitor.BootReceiver" android:exported="true">
             <intent-filter>
