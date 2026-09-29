@@ -41,22 +41,31 @@ class GuardAdminReceiver : DeviceAdminReceiver() {
 class CriticalPackageGuard(private val c: Context) {
     private val pm = c.packageManager
 
+    /**
+     * Mandatory in lock task and never suspended. Only what an app cannot give itself (review B8): system apps among
+     * the role handlers and fixed names, the home screen / phone / SMS apps the user chose as defaults, and the
+     * keyboards the user enabled. Declaring a HOME / dialer / installer filter or taking a system app's name (one
+     * that is missing on this phone) earns nothing — otherwise any app could put itself into strict mode's allowlist.
+     */
     val critical: Set<String> by lazy {
-        fun handlers(i: Intent) = runCatching { pm.queryIntentActivities(i, PackageManager.MATCH_DEFAULT_ONLY).map { it.activityInfo.packageName } }.getOrDefault(emptyList())
+        val roles = org.elderguard.monitor.TrustedRoles(c)
+        fun handlers(i: Intent) = runCatching { pm.queryIntentActivities(i, PackageManager.MATCH_DEFAULT_ONLY).map { it.activityInfo.packageName } }
+            .getOrDefault(emptyList()).filter { roles.isSystemApp(it) }
         val s = HashSet<String>()
-        s += listOf(c.packageName, "android", "com.android.systemui", "com.android.settings", "com.android.phone", "com.android.server.telecom",
+        s += listOf("android", "com.android.systemui", "com.android.settings", "com.android.phone", "com.android.server.telecom",
             "com.google.android.gms", "com.google.android.gsf", "com.android.vending", "com.android.permissioncontroller",
             "com.google.android.permissioncontroller", "com.android.packageinstaller", "com.google.android.packageinstaller",
-            "com.android.emergency", "com.android.providers.telephony", "com.android.shell")
-        s += handlers(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME))
+            "com.android.emergency", "com.android.providers.telephony", "com.android.shell").filter { it == "android" || roles.isSystemApp(it) }
+        s += c.packageName
+        s += roles.homes()
         s += handlers(Intent(Intent.ACTION_DIAL, Uri.parse("tel:112")))
         s += handlers(Intent(Settings.ACTION_SETTINGS))
         s += handlers(Intent("android.content.pm.action.REQUEST_PERMISSIONS"))
         s += handlers(Intent(Intent.ACTION_INSTALL_PACKAGE).setData(Uri.parse("content://x/y.apk")))
         runCatching { c.getSystemService(TelecomManager::class.java).defaultDialerPackage }.getOrNull()?.let { s += it }
         runCatching { Telephony.Sms.getDefaultSmsPackage(c) }.getOrNull()?.let { s += it }
-        runCatching { c.getSystemService(InputMethodManager::class.java).inputMethodList.map { it.packageName } }.getOrNull()?.let { s += it }
-        runCatching { WebView.getCurrentWebViewPackage()?.packageName }.getOrNull()?.let { s += it }
+        s += roles.enabledImes()
+        runCatching { WebView.getCurrentWebViewPackage()?.packageName }.getOrNull()?.let { s += it } // chosen by the system
         s
     }
 
@@ -146,22 +155,40 @@ class StrictModeManager(private val c: Context) {
         get() = p.getStringSet("allow", null)?.toSet() ?: defaultAllowlist()
         set(v) = p.edit().putStringSet("allow", v).apply()
 
-    /** Launcher, phone, messages, camera, photos, Settings, a browser, and common messaging / video apps if installed. */
+    /**
+     * Launcher, phone, messages, camera, photos, Settings, a browser, and common messaging / video apps if installed
+     * from an app store. A suggestion the family edits — built from trusted roles only (review B8), so an app cannot
+     * put itself in by declaring a camera / gallery / browser filter or by taking a popular app's name.
+     */
     fun defaultAllowlist(): Set<String> {
         val pm = c.packageManager
-        fun h(i: Intent) = runCatching { pm.queryIntentActivities(i, PackageManager.MATCH_DEFAULT_ONLY).map { it.activityInfo.packageName } }.getOrDefault(emptyList())
+        val roles = org.elderguard.monitor.TrustedRoles(c)
+        fun h(i: Intent) = runCatching { pm.queryIntentActivities(i, PackageManager.MATCH_DEFAULT_ONLY).map { it.activityInfo.packageName } }
+            .getOrDefault(emptyList()).filter { roles.isSystemApp(it) }
+        fun default(i: Intent) = runCatching { pm.resolveActivity(i, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName }.getOrNull()
+            ?.takeIf { it != "android" }
         val s = HashSet<String>()
-        s += h(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME))
+        s += roles.homes()
         s += h(Intent(Intent.ACTION_DIAL, Uri.parse("tel:112")))
         s += h(Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:1")))
+        runCatching { c.getSystemService(TelecomManager::class.java).defaultDialerPackage }.getOrNull()?.let { s += it }
+        runCatching { Telephony.Sms.getDefaultSmsPackage(c) }.getOrNull()?.let { s += it }
         s += h(Intent(MediaStore.ACTION_IMAGE_CAPTURE))
         s += h(Intent(Intent.ACTION_VIEW).setType("image/*"))
         s += h(Intent(Settings.ACTION_SETTINGS))
-        s += h(Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com"))).take(1)
+        val web = Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com"))
+        (default(web) ?: h(web).firstOrNull())?.let { s += it } // the browser the user chose, else a preinstalled one
         s += listOf("jp.naver.line.android", "com.tencent.mm", "com.google.android.youtube", "tv.danmaku.bili", "com.whatsapp")
-            .filter { runCatching { pm.getApplicationInfo(it, 0) }.isSuccess }
+            .filter { fromStore(it, roles) }
         return s
     }
+
+    /** Installed by a preinstalled app store (not sideloaded under a well-known name). */
+    private fun fromStore(pkg: String, roles: org.elderguard.monitor.TrustedRoles): Boolean = runCatching {
+        val installer = if (Build.VERSION.SDK_INT >= 30) c.packageManager.getInstallSourceInfo(pkg).installingPackageName
+            else @Suppress("DEPRECATION") c.packageManager.getInstallerPackageName(pkg)
+        installer != null && installer in org.elderguard.redirect.SystemFlowClassifier.KNOWN_STORES && roles.isSystemApp(installer)
+    }.getOrDefault(false)
 
     /** Always in the lock-task allowlist, whatever the family chose (never lock the user out of calls or the guard). */
     private fun mandatory(): Set<String> = critical.critical.filter { runCatching { c.packageManager.getApplicationInfo(it, 0) }.isSuccess }.toSet()

@@ -13,6 +13,18 @@ class PopupPolicyTest {
     private val ad = "com.bytedance.sdk.openadsdk.activity.TTFullWebActivity"
     private fun policy() = PopupPolicy(neverSource = setOf("org.elderguard", "com.launcher"), transparentPackages = setOf("com.ime"))
 
+    /** review B8: an (enabled) keyboard app's own ad page is a pop-up like any other; only its input window is invisible. */
+    @Test fun keyboardAppAdPageIsNotTransparent() {
+        val kb = "com.fancy.keyboard"
+        val p = PopupPolicy(neverSource = setOf("org.elderguard", "com.launcher"),
+            transparentWindow = { pkg, cls -> pkg == kb && cls == "android.inputmethodservice.SoftInputWindow" })
+        p.onWindow("com.launcher", "L", 0)
+        p.onWindow("com.chat", "com.chat.Main", 1_000)
+        assertFalse(p.onWindow(kb, "android.inputmethodservice.SoftInputWindow", 2_000).intrusion) // typing
+        assertEquals("com.chat", p.current())
+        assertTrue(p.onWindow(kb, ad, 3_000).intrusion) // the keyboard app's full-screen ad over the chat
+    }
+
     @Test fun firstPopupIsNotBlocked_secondIs() {
         val p = policy()
         p.onWindow("com.launcher", "L", 0)

@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -146,6 +147,13 @@ class MainActivity : ComponentActivity() {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         }
         intent?.getStringExtra(EXTRA_OPEN_PKG)?.let { openFromAlert(it) }
+        // While the home page is visible, re-read the real state every 10 s: a service that connects after the page was
+        // drawn (e.g. accessibility right after an update) otherwise stayed "沒有開啟" until the next resume (vivo test).
+        lifecycleScope.launch {
+            repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+                while (true) { kotlinx.coroutines.delay(10_000); if (screen == Screen.Home) refreshProtection() }
+            }
+        }
         setContent {
             GuardTheme {
                 // Before 0.5.0 there was no handler, so Back on any inner page closed the whole app (field report).
@@ -154,7 +162,8 @@ class MainActivity : ComponentActivity() {
                     Screen.Home -> HomeScreen(homeState(), ::findRecent, ::scanAll, { go(Screen.Detail(it.packageName)) },
                         onSettings = ::openSettings, onConsent = ::setConsent,
                         onCall165 = { safeStart(Intent(Intent.ACTION_DIAL, Uri.parse("tel:165"))) },
-                        protection = pc.home, onSetup = { go(Screen.Setup) }, onUnlock = { go(Screen.Redirect) })
+                        protection = pc.home, onSetup = { go(Screen.Setup) }, onUnlock = { go(Screen.Redirect) },
+                        onBattery = { safeStart(Capabilities.batteryIntent(this)) })
                     Screen.Setup -> org.elderguard.ui.SetupScreen(pc.parts(caps ?: Capabilities.read(this)), ::home)
                     Screen.Advanced -> org.elderguard.ui.AdvancedScreen(listOf(
                         "廣告防護（VPN）" to { open(Screen.Vpn) },
@@ -338,6 +347,7 @@ class MainActivity : ComponentActivity() {
             closerOn = org.elderguard.monitor.AdCloserService.isEnabled(this),
             closedLast24h = closedLast24h(),
             consentAsked = consent != null,
+            batteryRestricted = !c.batteryUnrestricted,
         )
     }
 

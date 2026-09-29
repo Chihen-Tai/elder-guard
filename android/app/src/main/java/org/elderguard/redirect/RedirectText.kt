@@ -39,9 +39,11 @@ object RedirectText {
         ReasonCode.LAUNCHER_FLOW -> "您從桌面打開的"
         ReasonCode.RECENTS_FLOW -> "您從最近使用的 App 切換的"
         ReasonCode.RETURN_FLOW -> "回到原本的 App"
-        ReasonCode.FINANCE_CAUTION -> "可能和付款、銀行有關，所以先問您"
+        ReasonCode.FINANCE_CAUTION -> "可能和付款、銀行有關，\n所以先問您"
         ReasonCode.BACKGROUND_LAUNCH -> "在背景偷偷打開"
         ReasonCode.USER_BLOCKED -> "您選擇不要"
+        ReasonCode.GUARD_RECOVERY -> "守門員帶您回來"
+        ReasonCode.REPEATED_TAPLESS -> "它常常沒等您點就打開"
         ReasonCode.NOT_PROTECTED, null -> ""
     }
 

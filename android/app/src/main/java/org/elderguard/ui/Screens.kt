@@ -90,6 +90,8 @@ data class HomeState(
     val closedLast24h: Int = 0,
     /** false until the user answered the one-time "help improve the guard?" question. */
     val consentAsked: Boolean = true,
+    /** Battery "restricted": some phones (vivo, after a reboot) may stop the guard, so "運作中" alone would overclaim. */
+    val batteryRestricted: Boolean = false,
 )
 
 data class SettingsState(
@@ -151,6 +153,7 @@ fun HomeScreen(
     protection: ProtectionHome? = null,
     onSetup: () -> Unit = {},
     onUnlock: () -> Unit = {},
+    onBattery: () -> Unit = onSettings,
 ) = Page {
     BrandBar(onSettings = onSettings)
     protection?.let { ProtectionCard(it, onSetup, onUnlock) }
@@ -187,13 +190,17 @@ fun HomeScreen(
         }
     } else SecondaryButton("檢查所有 App", onScanAll)
 
-    Card(if (s.monitorOk) Palette.SafeSoft else Palette.CautionSoft, border = false) {
+    Card(if (s.monitorOk && !s.batteryRestricted) Palette.SafeSoft else Palette.CautionSoft, border = false) {
         Text(if (s.monitorOk) "彈出廣告監測：運作中" else "彈出廣告監測：沒有完整運作",
             style = MaterialTheme.typography.titleLarge, color = if (s.monitorOk) Palette.Safe else Palette.Caution)
         if (s.monitorOk) Text("有 App 在您使用別的 App 時跳出畫面，守門員會通知您是哪一個。", style = MaterialTheme.typography.bodyMedium)
         else {
             Text("還沒開啟：" + s.capabilities.filter { !it.ok && it.required }.joinToString("、") { it.name }, style = MaterialTheme.typography.bodyMedium)
             PrimaryButton("去設定開啟", onSettings, Palette.Caution)
+        }
+        if (s.monitorOk && s.batteryRestricted) {
+            Text("但電池設定是「受限制」，\n手機可能會停掉守門員。", style = MaterialTheme.typography.bodyMedium, color = Palette.Caution)
+            SecondaryButton("去改成不限制", onBattery)
         }
         if (s.closerOn && s.closedLast24h > 0) Text("過去 24 小時自動關掉廣告 ${s.closedLast24h} 次。", style = MaterialTheme.typography.bodyMedium, color = Palette.Safe)
     }
@@ -210,7 +217,7 @@ fun HomeScreen(
         Text("先掛掉，再打 165 問問看。\n免費，有真人接聽。", style = MaterialTheme.typography.bodyMedium, color = Palette.InkSoft)
         SecondaryButton("撥打 165", onCall165)
     }
-    QuietButton("設定（保護功能、權限、記錄檔）", onSettings)
+    QuietButton("設定（保護、權限、記錄）", onSettings)
 }
 
 @Composable

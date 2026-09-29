@@ -108,6 +108,8 @@ class DebugHarnessActivity : Activity() {
             "protect" -> { ProtectedAppManager.get(this).setProtected(arg ?: return, true); say("protect: $arg") }
             "unprotect" -> { ProtectedAppManager.get(this).setProtected(arg ?: return, false); say("unprotect: $arg") }
             "unlock" -> { RedirectGuard.sharedUnlock.unlock((arg?.toLongOrNull() ?: 30) * 1000); say("unlock: ${arg ?: 30}s") }
+            "intent" -> { val g = RedirectGuard.instance; val last = g?.engine?.intent?.lastInteraction(arg ?: "")
+                say("intent $arg: lastInteraction=${last?.let { "${(System.currentTimeMillis() - it) / 1000}s ago" } ?: "never"} protected=${ProtectedAppManager.get(this).isProtected(arg ?: "")}") }
             "guard" -> say("guard: running=${RedirectGuard.instance != null} front=${RedirectGuard.instance?.engine?.tracker?.current}")
             "history" -> RedirectHistoryRepository.get(this).read().takeLast(20).forEach {
                 say("hist: ${it.source} -> ${it.target} ${it.decision} ${it.reasons.joinToString(",")} score=${it.score} ia=${it.interactionAgeMs} o=${it.outcome}")
@@ -131,6 +133,9 @@ class DebugHarnessActivity : Activity() {
                 FilterRepository.get(this).catalog().joinToString(" | ") { "${it.id} on=${it.enabled} rules=${it.ruleCount} err=${it.lastError}" }) }.start()
             "enable_list" -> Thread { FilterRepository.get(this).setEnabled(arg ?: "", true); say("enabled $arg") }.start()
             "trace" -> { getSharedPreferences("debug", MODE_PRIVATE).edit().putBoolean("trace", arg != "off").apply(); say("trace ${arg ?: "on"} (takes effect when the accessibility service reconnects)") }
+            "exempt_audit" -> Thread { // also to a file: some OEMs (vivo) drop app logs; read it with run-as
+                val a = org.elderguard.redirect.RedirectGuard.auditExemptions(this); java.io.File(filesDir, "exempt_audit.txt").writeText(a)
+                a.lines().forEach { say("audit: $it") } }.start()
             "clear_history" -> { RedirectHistoryRepository.get(this).clear(); say("history cleared") }
             else -> say("unknown cmd $c")
         }

@@ -40,9 +40,11 @@ import org.elderguard.ui.ShieldState
  * "blocked" notification (grants this one pair once, for 30 s, then opens the target).
  */
 class RedirectPromptActivity : ComponentActivity() {
-    enum class Answer { YES, NO, ALWAYS, DISMISSED }
+    /** DISMISSED = the user pressed Back; COVERED = something else came on top (not a user answer). */
+    enum class Answer { YES, NO, ALWAYS, DISMISSED, COVERED, SUPERSEDED }
 
     private var answered = false
+    private var talkBack = false
     private lateinit var tr: Transition
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,6 +58,7 @@ class RedirectPromptActivity : ComponentActivity() {
         if (android.os.Build.VERSION.SDK_INT >= 31) window.setHideOverlayWindows(true)
         window.decorView.filterTouchesWhenObscured = true
         // App names are chosen by the apps themselves: keep them short so they cannot fill the question with text
+        talkBack = runCatching { getSystemService(android.view.accessibility.AccessibilityManager::class.java).isTouchExplorationEnabled }.getOrDefault(false)
         val src = Alerts.label(this, from).take(24)
         val dst = Alerts.label(this, to).take(24)
         setContent {
@@ -70,6 +73,8 @@ class RedirectPromptActivity : ComponentActivity() {
                                 modifier = Modifier.semantics { heading() })
                             Text("「$src」\n剛剛打開了「$dst」", style = MaterialTheme.typography.bodyLarge, color = Palette.Ink)
                             Text("如果不是您按的，\n可能是廣告。", style = MaterialTheme.typography.bodyMedium, color = Palette.InkSoft)
+                            // a plain sentence, not a ticking countdown: the guard must not look like a scam pop-up
+                            if (!talkBack) Text("10 秒內沒有選擇，\n會自動帶您回到「$src」。", style = MaterialTheme.typography.bodyMedium, color = Palette.InkSoft)
                             PrimaryButton("不要，回到「$src」", { answer(Answer.NO) })
                             SecondaryButton("要，繼續使用") { answer(Answer.YES) }
                             QuietButton("以後都允許") { answer(Answer.ALWAYS) }
@@ -80,20 +85,57 @@ class RedirectPromptActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * singleTask: a second question arrives here while the first is showing (vivo test: the screen kept showing the
+     * old pair). The old question is left unanswered ("covered") and the page is rebuilt for the new one.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (!answered && ::tr.isInitialized) RedirectGuard.instance?.answered(tr, Answer.SUPERSEDED)
+        setIntent(intent)
+        recreate()
+    }
+
+    /**
+     * No answer in [TIMEOUT_MS] = "不要" (user decision 2026-09-29): the phone goes back to the app the user was in.
+     * Runs only while the question is on screen; a question that comes back after being covered starts again.
+     */
+    private val h = android.os.Handler(android.os.Looper.getMainLooper())
+    private val timeout = Runnable { if (!answered && ::tr.isInitialized) answer(Answer.NO) }
+
+    override fun onResume() {
+        super.onResume()
+        h.removeCallbacks(timeout)
+        // With TalkBack, reading the question aloud alone can take longer than 10 s: no timeout then (review N5).
+        if (!talkBack) h.postDelayed(timeout, TIMEOUT_MS)
+    }
+
+    override fun onPause() { super.onPause(); h.removeCallbacks(timeout) }
+
     private fun answer(a: Answer) {
         if (answered) return
         answered = true
         RedirectGuard.instance?.answered(tr, a) ?: run {
-            // the accessibility service went away meanwhile: still honour an explicit "always"
-            if (a == Answer.ALWAYS) RedirectRuleRepository.get(this).put(tr.from, tr.to, Decision.ALLOW)
+            // The accessibility service is reconnecting right now (OEMs / other tools can unbind it for a moment).
+            // Still honour the answer: save "always", and for "no" bring the app the user was in back ourselves.
+            val now = System.currentTimeMillis()
+            when (a) {
+                Answer.ALWAYS -> RedirectRuleRepository.get(this).put(tr.from, tr.to, Decision.ALLOW)
+                Answer.NO -> {
+                    RedirectHistoryRepository.get(this).outcome(now, tr.from, tr.to, "user_block")
+                    packageManager.getLaunchIntentForPackage(tr.from)?.let { runCatching { startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
+                }
+                else -> {}
+            }
         }
         finish()
     }
 
     override fun onStop() {
         super.onStop()
-        // The user went elsewhere without answering (home button, another app): leave things as they are.
-        if (!answered && ::tr.isInitialized && !isChangingConfigurations) { answered = true; RedirectGuard.instance?.answered(tr, Answer.DISMISSED); finish() }
+        // Something came on top without an answer: the user went home, or the target app itself opened its next
+        // page over the question (vivo, Shopee: splash -> main hid the question). The guard decides which.
+        if (!answered && ::tr.isInitialized && !isChangingConfigurations) { answered = true; RedirectGuard.instance?.answered(tr, Answer.COVERED); finish() }
     }
 
     private fun openAnyway(from: String, to: String) {
@@ -105,6 +147,7 @@ class RedirectPromptActivity : ComponentActivity() {
 
     companion object {
         const val ACTION_OPEN_ANYWAY = "org.elderguard.redirect.OPEN_ANYWAY"
+        const val TIMEOUT_MS = 10_000L
         private const val EXTRA_FROM = "from"
         private const val EXTRA_TO = "to"
         private const val EXTRA_FROM_CLS = "fromCls"

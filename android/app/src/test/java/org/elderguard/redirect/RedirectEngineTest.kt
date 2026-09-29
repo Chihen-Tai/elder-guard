@@ -30,20 +30,22 @@ class RedirectEngineTest {
     private var protected = setOf(WECHAT, LINE, GAME, NEWS, GALLERY, BILI)
     private lateinit var e: RedirectEngine
 
+    private var blockedBefore = setOf<String>()
     private val env = object : RedirectEnv {
         override fun now() = now
         override fun isProtected(pkg: String) = pkg in protected
         override fun isAdPage(cls: String?) = cls?.startsWith("com.applovin.") == true || cls?.startsWith("com.bytedance.sdk.openadsdk.") == true
         override fun rule(source: String, target: String) = rules["$source>$target"]?.takeIf { it.active(now) }
         override fun consumeGrant(source: String, target: String) = grants.remove("$source>$target")
-        override fun hadBlocksRecently(source: String) = false
+        override fun hadBlocksRecently(source: String) = source in blockedBefore
         override fun hasNotification(pkg: String) = pkg in notified
     }
 
     @Before fun setUp() {
-        val sys = SystemFlowClassifier(
+        val sys = testClassifier(
             launchers = setOf(HOME), imes = setOf("com.google.android.inputmethod.latin"),
             systemTargets = SystemFlowClassifier.CORE_SYSTEM, self = "org.elderguard", browsers = setOf(CHROME),
+            systemUis = setOf(SystemFlowClassifier.SYSTEM_UI, "com.vivo.systemuiplugin"), // preinstalled on the vivo
         )
         e = RedirectEngine(sys, env)
     }
@@ -182,6 +184,21 @@ class RedirectEngineTest {
         assertEquals(Decision.BLOCK, open(SHOPEE, dt = 800).decision)
     }
 
+    /** review B8: an app posting its own heads-up makes a System UI window; that is not the user opening the shade. */
+    @Test fun headsUpPostedByAnAppIsNotAShadeTap() {
+        using(GAME)
+        now += 30_000
+        notified += SHOPEE                       // Shopee has a promo notification showing
+        e.onNotificationPosted(now)              // the game posts a heads-up...
+        win("com.android.systemui", "android.widget.FrameLayout", dt = 200) // ...which is a System UI window
+        assertEquals(Decision.BLOCK, open(SHOPEE, dt = 800).decision)
+        // the heads-up collapsing seconds later is not a shade tap either
+        using(GAME); now += 2_000
+        e.onNotificationPosted(now)
+        win("com.android.systemui", "android.widget.FrameLayout", dt = 6_000)
+        assertEquals(Decision.BLOCK, open(SHOPEE, dt = 800).decision)
+    }
+
     @Test fun caseK_loopIsDetectedAndSendsHome() {
         using(GAME)
         now += 30_000
@@ -228,20 +245,20 @@ class RedirectEngineTest {
 
     @Test fun keyboardAndOwnPromptAreTransparent() {
         using(WECHAT)
-        assertNull(win("com.google.android.inputmethod.latin", dt = 100))
+        assertNull(win("com.google.android.inputmethod.latin", "android.inputmethodservice.SoftInputWindow", dt = 100)) // the keyboard window
         assertNull(win("org.elderguard", dt = 100))
         assertNull(win(WECHAT, dt = 100)) // still the same app: no switch
     }
 
     @Test fun rulesAreSourceTargetPairsNotGlobal() {
-        rules["$WECHAT>$BILI"] = RedirectRule(WECHAT, BILI, Decision.ALLOW, RedirectRule.CreatedBy.USER, 0)
+        rules["$WECHAT>$TAOBAO"] = RedirectRule(WECHAT, TAOBAO, Decision.ALLOW, RedirectRule.CreatedBy.USER, 0)
         using(WECHAT)
         now += 30_000
-        assertEquals(ReasonCode.KNOWN_ALLOW_RULE, open(BILI).primary)
+        assertEquals(ReasonCode.KNOWN_ALLOW_RULE, open(TAOBAO).primary)
         // another app opening the same target is still analysed
         using(GAME)
         now += 30_000
-        assertEquals(Decision.BLOCK, open(BILI).decision)
+        assertEquals(Decision.BLOCK, open(TAOBAO).decision)
     }
 
     @Test fun expiredRuleNoLongerApplies() {
@@ -273,6 +290,9 @@ class RedirectEngineTest {
 
     @Test fun bankingIsNeverHardBlocked() {
         using(GAME); now += 30_000
+        assertTrue(open(BANK).decision != Decision.BLOCK)
+        // even straight out of an ad page (strong evidence), a bank / payment app is only asked about
+        using(GAME); win(GAME, "com.applovin.adview.AppLovinFullscreenActivity", dt = 1_000); now += 5_000
         val v = open(BANK)
         assertEquals(Decision.ASK, v.decision)
         assertEquals(ReasonCode.FINANCE_CAUTION, v.primary)
@@ -285,6 +305,59 @@ class RedirectEngineTest {
         val v = open(PLAY)
         assertEquals(Decision.ASK, v.decision)
         assertTrue(ReasonCode.INTERACTION_UNOBSERVABLE in v.reasons)
+    }
+
+    @Test fun appsThatNeverReportTapsStillOpenLinksNormally() {
+        // WeChat / LINE / YouTube on a real phone may send no click events at all (vivo field test: YouTube sent none)
+        win(WECHAT, dt = 1_000); now += 120_000
+        assertEquals(Decision.ALLOW, open(BILI).decision)       // case A without a visible click
+        win(LINE, dt = 1_000); now += 120_000
+        assertEquals(Decision.ALLOW, open(YT).decision)         // case C
+        win(LINE, dt = 1_000); now += 120_000
+        assertEquals(Decision.ALLOW, open(CHROME).decision)     // a link to the browser
+        // but a jump to a shop from such an app is still questioned
+        win(LINE, dt = 1_000); now += 120_000
+        assertEquals(Decision.ASK, open(SHOPEE).decision)
+    }
+
+    @Test fun afterARefusedShopJumpOrdinaryLinksStillOpen() {
+        blockedBefore = setOf(YT); protected = protected + YT
+        win(YT, dt = 1_000); now += 60_000
+        assertEquals(Decision.ALLOW, open(CHROME).decision)
+        win(YT, dt = 1_000); now += 60_000
+        val v = open(SHOPEE)
+        assertTrue(ReasonCode.SOURCE_HISTORY in v.reasons)
+    }
+
+    @Test fun quickBounceToABrowserIsNotAnInstantAdJump() {
+        protected = protected + YT
+        win(YT, dt = 1_000); now += 60_000
+        win(CHROME, dt = 0); win(YT, dt = 800)      // user came back from the browser
+        assertEquals(Decision.ALLOW, open(CHROME, dt = 400).decision) // browser flashes back once
+    }
+
+    @Test fun aTapThatSentNoClickEventIntoABrowserOrVideoAppIsNotBlocked() {
+        // vivo field test: a video app reported some taps earlier, but not the one that opened Chrome
+        val VIDEO = "com.example.videoapp"; protected = protected + VIDEO
+        using(VIDEO); now += 10_000
+        assertEquals(Decision.ALLOW, open(CHROME).decision)
+        using(VIDEO); now += 10_000
+        assertEquals(Decision.ALLOW, open(BILI).decision)
+        // but from an ad page, or to a shop, a missing click still counts
+        using(VIDEO); win(VIDEO, "com.applovin.adview.AppLovinFullscreenActivity", dt = 1_000); now += 5_000
+        assertEquals(Decision.BLOCK, open(CHROME).decision)
+        using(VIDEO); now += 10_000
+        assertEquals(Decision.BLOCK, open(SHOPEE).decision)
+    }
+
+    @Test fun repeatedSignalLooksBackTenMinutesNotJustTheLoopWindow() {
+        using(GAME); now += 30_000
+        val (tr, v) = win(SHOPEE)!!
+        e.recordBlocked(tr, v)
+        e.recoveredTo(GAME, SHOPEE, now + 700)
+        now += 3 * 60_000 // three minutes later, well outside the 10 s loop window
+        win(GAME, dt = 0); now += 20_000
+        assertTrue(ReasonCode.REPEATED_REDIRECT in open(SHOPEE).reasons)
     }
 
     @Test fun shakeDetectorNeedsTwoJolts() {
@@ -310,6 +383,31 @@ class RedirectEngineTest {
         click(GAME, dt = 2_000)
         val v = open(SHOPEE, dt = 15_000)
         assertTrue(v.reasons.toString(), ReasonCode.INSTANT_LAUNCH !in v.reasons)
+    }
+
+    @Test fun theGuardsOwnRecoveryIsNotJudgedAsARedirectByTheTarget() {
+        protected = protected + SHOPEE // the target contains an ad SDK too (vivo: Shopee)
+        using(LINE); now += 30_000
+        val (tr, v) = win(SHOPEE)!!
+        assertEquals(Decision.BLOCK, v.decision)
+        e.expectRecovery(tr.to, now, returnTo = tr.from) // guard presses BACK
+        assertEquals(ReasonCode.GUARD_RECOVERY, open(LINE, dt = 700).primary)
+        // later, a real switch from the shop is judged again
+        now += 10_000
+        assertTrue(open(TAOBAO).decision != Decision.ALLOW)
+    }
+
+    @Test fun oemSystemUiPluginWindowsAreNotANotificationTap() {
+        using(LINE); now += 30_000
+        notified += SHOPEE
+        win("com.vivo.systemuiplugin", "android.widget.FrameLayout", dt = 100)
+        assertTrue(open(SHOPEE, dt = 500).decision != Decision.ALLOW)
+    }
+
+    @Test fun oemSystemUiPluginsAreTransparent() {
+        using(LINE)
+        assertNull(win("com.vivo.systemuiplugin", "android.widget.FrameLayout", dt = 100))
+        assertEquals(LINE, e.tracker.current)
     }
 
     @Test fun categories() {

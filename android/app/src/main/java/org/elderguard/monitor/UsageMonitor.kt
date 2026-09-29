@@ -48,14 +48,16 @@ class UsageMonitor(private val c: Context) {
         return list to d.summarize(list)
     }
 
-    /** Our own app, System UI, permission and installer dialogs, and the current launcher(s) never count as sources. */
-    private fun homes(): Set<String> = c.packageManager
-        .queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY)
-        .map { it.activityInfo.packageName }.toSet()
+    /**
+     * Our own app, System UI, permission and installer dialogs, and the trusted home screens (system ones and the
+     * default) never count as sources — not every app that declares HOME (review B8).
+     */
+    private fun homes(): Set<String> = TrustedRoles(c).homes()
 
     private fun ignoredPackages(): Set<String> {
-        val homes = homes()
-        return setOf(c.packageName, "android", "com.android.systemui", "com.google.android.permissioncontroller",
-            "com.android.permissioncontroller", "com.google.android.packageinstaller", "com.android.packageinstaller") + homes
+        val roles = TrustedRoles(c)
+        // fixed names only when that package really is a system app here: a missing one could be taken by a sideloaded app
+        return setOf(c.packageName, "com.android.systemui") +
+            TrustedRoles.SYSTEM_DIALOGS.filter { it == "android" || roles.isSystemApp(it) } + roles.homes()
     }
 }

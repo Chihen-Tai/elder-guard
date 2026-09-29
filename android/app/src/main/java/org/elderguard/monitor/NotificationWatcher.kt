@@ -31,6 +31,8 @@ class NotificationWatcher : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         refreshActive()
+        // its heads-up is a System UI window: not "the user opened the shade" (time only, nothing about the content)
+        org.elderguard.redirect.RedirectGuard.instance?.engine?.onNotificationPosted(System.currentTimeMillis())
         if (sbn.packageName == packageName) return
         val n = sbn.notification ?: return
         val ex = n.extras

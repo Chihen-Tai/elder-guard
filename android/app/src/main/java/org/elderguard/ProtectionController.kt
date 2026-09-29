@@ -85,7 +85,7 @@ class ProtectionController(private val a: MainActivity) {
                 vpn.otherVpnActive -> "手機正在使用別的 VPN。\n同一時間只能有一個 VPN，\n開啟廣告防護會把它關掉。"
                 vpn.state == VpnState.FAILED_OPEN -> "廣告防護出了問題，已先關掉，\n網路照常可用。可以再試一次。"
                 vpn.state == VpnState.REVOKED -> "廣告防護被其他 VPN 取代，\n或在系統設定中被關掉了。"
-                else -> "在手機上擋掉廣告和\n追蹤網站。會使用 Android\n的 VPN 功能（同時只能一個）。"
+                else -> "在手機上擋掉廣告\n和追蹤網站。\n使用 Android 的 VPN，\n同時只能開一個。"
             }) { a.requestVpn() },
             Part("防止亂跳 App", a11y && apps.enabled, if (AdCloserService.isEnabled(a) && !AdCloserService.connected)
                 "需要重新啟用防跳轉權限：\n到「無障礙」把 fkAd 關掉\n再打開。" else "在「無障礙」裡開啟 fkAd。\n守門員不會讀取畫面文字。") {
@@ -163,8 +163,7 @@ class ProtectionController(private val a: MainActivity) {
             val all = vpnSettings.appMode == AppMode.ALL
             val chosen = if (all) vpnSettings.bypass else vpnSettings.selected
             appList = withContext(Dispatchers.Default) {
-                userApps().map { (pkg, lbl) -> LabeledPkg(pkg, lbl, if (all && org.elderguard.redirect.SystemFlowClassifier(emptySet(), emptySet(), emptySet(), self = "")
-                    .isFinance(pkg)) "看起來是銀行或付款 App" else null, pkg in chosen) }
+                userApps().map { (pkg, lbl) -> LabeledPkg(pkg, lbl, if (all && org.elderguard.redirect.SystemFlowClassifier.looksFinance(pkg)) "看起來是銀行或付款 App" else null, pkg in chosen) }
                     .sortedWith(compareByDescending<LabeledPkg> { it.on }.thenBy { it.label })
             }
         }
@@ -205,7 +204,7 @@ class ProtectionController(private val a: MainActivity) {
     fun enableList(id: String, on: Boolean) = bg { filters.setEnabled(id, on) }
     fun rollback(id: String) = bg { filtersMessage = if (filters.rollback(id)) "已還原上一版。" else "沒有可以還原的版本。" }
     fun removeList(id: String) = bg { filters.remove(id) }
-    fun addList(name: String, url: String) = bg { filtersMessage = filters.addCustom(name, url.trim()) ?: "已加入，請按「現在更新」下載。" }
+    fun addList(name: String, url: String) = bg { filtersMessage = filters.addCustom(name, url.trim()) ?: "已加入，\n請按「現在更新」下載。" }
     fun addRule(domain: String, block: Boolean) = bg { filtersMessage = if (filters.addUserRule(domain, block) == null) "「$domain」不是有效的網域。" else null }
     fun removeRule(domain: String) = bg { filters.removeUserRule(domain) }
     fun setRemote(on: Boolean) { vpnSettings.remoteUpdates = on; FilterUpdateJob.schedule(a); refreshFilters() }
@@ -218,7 +217,7 @@ class ProtectionController(private val a: MainActivity) {
         a.lifecycleScope.launch {
             val retry = withContext(Dispatchers.IO) { runCatching { FilterUpdateJob.updateAll(a, force = false, onlyId = id) }.getOrDefault(true) }
             filtersBusy = false
-            filtersMessage = if (retry) "有清單沒有更新成功，舊的規則照常使用。" else "更新完成。"
+            filtersMessage = if (retry) "有清單沒有更新成功，\n舊的規則照常使用。" else "更新完成。"
             refreshFilters()
         }
     }
@@ -250,7 +249,11 @@ class ProtectionController(private val a: MainActivity) {
         a.lifecycleScope.launch {
             appList = withContext(Dispatchers.Default) {
                 userApps().filter { (pkg, _) -> isUserInstalled(pkg) || pkg in apps.included }
-                    .map { (pkg, lbl) -> LabeledPkg(pkg, lbl, if (pkg in apps.adApps) "裡面有廣告程式" else null, apps.isProtected(pkg)) }
+                    .map { (pkg, lbl) -> LabeledPkg(pkg, lbl, when {
+                        pkg in apps.adApps -> "裡面有廣告程式"
+                        pkg in apps.learned -> "自動加入：它曾經\n自己跳到別的 App"
+                        else -> null
+                    }, apps.isProtected(pkg)) }
                     .sortedWith(compareByDescending<LabeledPkg> { it.on }.thenBy { it.label })
             }
         }
@@ -290,25 +293,32 @@ class ProtectionController(private val a: MainActivity) {
         diagRows = listOf(
             DiagRow("廣告防護（VPN）", if (vpn.wanted) vpn.active else null, when {
                 !vpn.wanted -> "沒有開啟"
-                vpn.active -> "運作中，上游：${VpnRuntime.upstreamLabel ?: "-"}" + if (VpnRuntime.upstreamFallback) "（加密 DNS 連不上，暫用一般 DNS）" else ""
-                else -> "設定是開啟，但 Android 沒有這個 VPN（${vpn.state}）${vpn.message?.let { "：$it" } ?: ""}"
+                vpn.active -> "運作中\nDNS：${upstreamName(VpnRuntime.upstreamLabel)}" + if (VpnRuntime.upstreamFallback) "\n（加密 DNS 連不上，\n暫用網路原本的 DNS）" else ""
+                else -> "設定是開啟，\n但 Android 沒有這個 VPN\n（${vpn.state}）${vpn.message?.let { "\n$it" } ?: ""}"
             }),
-            DiagRow("過濾規則", filters.loaded && eng.blockRuleCount > 0, if (filters.loaded) "${"%,d".format(eng.blockRuleCount)} 條" + (filters.loadError?.let { "；$it" } ?: "") else "尚未載入（開啟廣告防護時載入）"),
+            DiagRow("過濾規則", filters.loaded && eng.blockRuleCount > 0, if (filters.loaded) "${"%,d".format(eng.blockRuleCount)} 條" + (filters.loadError?.let { "；$it" } ?: "") else "尚未載入\n（開啟廣告防護時載入）"),
             DiagRow("其他 VPN", !vpn.otherVpnActive, if (vpn.otherVpnActive) "有別的 VPN 正在使用" else "沒有"),
             DiagRow("私人 DNS", vpn.privateDnsStrict == null, vpn.privateDnsStrict?.let { "指定為 $it：會繞過廣告防護" } ?: "自動或關閉（正常）"),
             DiagRow("永遠開啟 VPN", null, when (vpn.alwaysOn) { true -> "已開啟" + if (vpn.lockdown == true) "，並封鎖未使用 VPN 的連線" else ""; false -> "沒有開啟（選用）"; null -> "開啟廣告防護後才看得到" }),
             DiagRow("防跳轉（無障礙）", AdCloserService.isEnabled(a) && AdCloserService.connected, when {
                 !AdCloserService.isEnabled(a) -> "沒有開啟"
-                !AdCloserService.connected -> "設定是開啟，但服務沒有在執行：請關掉再打開"
+                !AdCloserService.connected -> "設定是開啟，\n但服務沒有在執行：\n請關掉再打開"
                 else -> "運作中" + if (!apps.enabled) "（跳轉保護被關閉）" else ""
             }),
             DiagRow("通知存取", caps.notificationAccess, if (caps.notificationAccess) "已開啟" else "沒有開啟"),
             DiagRow("使用情況存取", caps.usageAccess, if (caps.usageAccess) "已開啟" else "沒有開啟"),
             DiagRow("背景監測", caps.monitorAlive, caps.heartbeatAgeSec?.let { "上次回報：$it 秒前" } ?: "沒有回報"),
             DiagRow("電池最佳化", batteryOk, if (batteryOk) "不限制（好）" else "受限制：部分手機會停掉守門員"),
-            DiagRow("開機自動恢復", true, "開機後自動恢復：廣告防護" + (if (vpnSettings.enabled) "（開）" else "（關）") + "、監測、嚴格模式" + (if (strict.enabled) "（開）" else "（關）")),
+            DiagRow("開機自動恢復", true, "廣告防護：" + (if (vpnSettings.enabled) "開" else "關") + "\n背景監測：開\n嚴格模式：" + (if (strict.enabled) "開" else "關")),
             DiagRow("Android 版本", null, "${Build.VERSION.RELEASE}（SDK ${Build.VERSION.SDK_INT}），${Build.MANUFACTURER} ${Build.MODEL}"),
         )
+    }
+
+    private fun upstreamName(label: String?) = when {
+        label == null -> "-"
+        label.startsWith("doh") -> "加密 DNS（${vpnSettings.upstream.label.substringBefore('（')}）"
+        label == "network" -> "目前網路的 DNS"
+        else -> vpnSettings.upstream.label
     }
 
     // ------------------------------------------------------------ strict mode
@@ -331,11 +341,11 @@ class ProtectionController(private val a: MainActivity) {
     fun exitStrict(p: String) { strictMessage = pin.check(p) ?: run { strict.exit(); "已離開嚴格模式。" }; refreshStrict() }
     /** While strict mode is on nothing here changes without the PIN (leave strict mode first) — review M3. */
     fun strictAllow(pkg: String, on: Boolean) {
-        if (strict.enabled) { strictMessage = "要修改，請先輸入密碼離開嚴格模式。"; refreshStrict(); return }
+        if (strict.enabled) { strictMessage = "要修改，請先輸入\n密碼離開嚴格模式。"; refreshStrict(); return }
         strict.allowlist = if (on) strict.allowlist + pkg else strict.allowlist - pkg; refreshStrict()
     }
     fun suspend(pkg: String, on: Boolean) {
-        if (strict.enabled) { strictMessage = "要修改，請先輸入密碼離開嚴格模式。"; refreshStrict(); return }
+        if (strict.enabled) { strictMessage = "要修改，請先輸入\n密碼離開嚴格模式。"; refreshStrict(); return }
         strictMessage = strict.setSuspended(pkg, on); refreshStrict()
     }
     fun release(p: String) {

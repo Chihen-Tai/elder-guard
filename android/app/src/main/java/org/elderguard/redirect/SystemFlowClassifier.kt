@@ -8,37 +8,76 @@ package org.elderguard.redirect
  * below — not from one brand's package list.
  */
 class SystemFlowClassifier(
-    /** Default and other installed home screens. */
-    val launchers: Set<String>,
-    /** Keyboards: their windows never mean "the user switched app". */
+    /** Apps declaring HOME. Only system ones and [defaultHome] are trusted (see [launchers]). */
+    launchers: Set<String>,
+    /** ENABLED keyboards: only their input window is transparent, never their activities (see [isActivity]). */
     val imes: Set<String>,
-    /** Everything a user must always be able to reach (dialer, emergency, settings, permission and install dialogs...). */
-    val systemTargets: Set<String>,
+    /** Handlers of system flows (dial, camera, pickers, settings, installer...). Only system ones are trusted. */
+    systemTargets: Set<String>,
     /** Share sheet / "open with" chooser packages. */
-    val choosers: Set<String> = DEFAULT_CHOOSERS,
+    choosers: Set<String> = DEFAULT_CHOOSERS,
     val self: String,
     /** Browsers (resolved from "open https://" handlers). */
     val browsers: Set<String> = emptySet(),
     val appStores: Set<String> = KNOWN_STORES,
     val extraShopping: Set<String> = emptySet(),
     val extraFinance: Set<String> = emptySet(),
+    /**
+     * AOSP System UI plus OEM System UI plugins that are PREINSTALLED system apps (built from package flags on the
+     * phone). Never by name alone: a third-party app named "com.cleaner.systemui.booster" would otherwise become
+     * invisible and its jumps would look like "opened from the home screen" (security review, attack a1).
+     */
+    val systemUis: Set<String> = setOf(SYSTEM_UI),
+    /**
+     * Whether (pkg, cls) is one of the app's ACTIVITIES. Only a keyboard's own input window (not an Activity, e.g.
+     * android.inputmethodservice.SoftInputWindow) is transparent; the IME package's activities (theme store,
+     * settings) are tracked like any app (review B5/b7). The phone passes a PackageManager lookup. Required (review B8).
+     */
+    val isActivity: (String, String?) -> Boolean,
+    /**
+     * THE trust test (review B1/B5): is this a preinstalled system app? The phone passes the real FLAG_SYSTEM check;
+     * anything an app merely DECLARES (a HOME filter, a camera / picker / installer filter, a name) earns nothing.
+     * Required, with no default (review B8): a name-based default would be the B1 mistake waiting for the next caller.
+     * Unit tests pass theirs through a test-only factory.
+     */
+    val isSystemApp: (String) -> Boolean,
+    /** The home screen the user actually uses (a default the user chose; trusted even if not a system app). */
+    val defaultHome: String? = null,
+    /** Default phone / SMS apps the user chose: always reachable as targets, but their own switches are judged. */
+    val userDefaults: Set<String> = emptySet(),
 ) {
+    /** Trusted home screens: system ones and the user's default. A theme launcher that is not the default is an app. */
+    val launchers: Set<String> = launchers.filter { isSystemApp(it) || it == defaultHome }.toSet()
+    /** Trusted system-flow targets: system apps, plus the user's chosen default phone / SMS apps. */
+    val systemTargets: Set<String> = systemTargets.filter { isSystemApp(it) }.toSet() + userDefaults
+    /** Packages whose OWN switches are never judged: system apps only. */
+    private val systemSources: Set<String> = systemTargets.filter { isSystemApp(it) }.toSet()
+    val choosers: Set<String> = choosers.filter { it == "android" || isSystemApp(it) }.toSet()
+
     enum class Hop { LAUNCHER, RECENTS, CHOOSER, SHADE }
 
     /** Windows that do not change "which app the user is in" (keyboards, our own prompt, System UI overlays). */
     fun isTransparent(pkg: String, cls: String?): Boolean =
-        pkg in imes || pkg == self || (pkg == SYSTEM_UI && hopOf(pkg, cls) == null)
+        (pkg in imes && !isActivity(pkg, cls)) || pkg == self || (isSystemUi(pkg) && hopOf(pkg, cls) == null)
+
+    /** AOSP System UI and preinstalled OEM System UI plugins (vivo field test: com.vivo.systemuiplugin). */
+    fun isSystemUi(pkg: String) = pkg in systemUis
 
     /** When the user passes through one of these, the next app was chosen by the user. */
     fun hopOf(pkg: String, cls: String?): Hop? = when {
         pkg in launchers -> if (cls?.contains("recents", ignoreCase = true) == true) Hop.RECENTS else Hop.LAUNCHER
-        pkg == SYSTEM_UI && cls?.contains("recents", ignoreCase = true) == true -> Hop.RECENTS
-        pkg in choosers || cls?.let { c -> CHOOSER_CLASSES.any { c.endsWith(it) } } == true -> Hop.CHOOSER
+        isSystemUi(pkg) && cls?.contains("recents", ignoreCase = true) == true -> Hop.RECENTS
+        // By class name only inside a SYSTEM app (OEM resolvers): any app can name its own page "…ChooserActivity"
+        // and would then pass as the share sheet (review B7).
+        pkg in choosers || (cls != null && CHOOSER_CLASSES.any { cls.endsWith(it) } && isSystemApp(pkg)) -> Hop.CHOOSER
         else -> null
     }
 
     /** Opening one of these is never an ad redirect (camera for a photo, file picker, permission dialog, dialer...). */
-    fun isSystemTarget(pkg: String): Boolean = pkg in systemTargets || pkg in launchers || pkg in choosers || pkg == "android" || pkg == SYSTEM_UI
+    fun isSystemTarget(pkg: String): Boolean = pkg in systemTargets || pkg in launchers || pkg in choosers || pkg == "android" || isSystemUi(pkg)
+
+    /** A system app whose own switches are not judged (never a user-installed app, whatever it declares). */
+    fun isSystemSource(pkg: String): Boolean = pkg in systemSources || pkg in launchers || pkg == "android" || isSystemUi(pkg)
 
     fun kind(pkg: String): TargetKind = when {
         pkg in appStores -> TargetKind.APP_STORE
@@ -48,7 +87,7 @@ class SystemFlowClassifier(
         else -> TargetKind.OTHER
     }
 
-    fun isFinance(pkg: String): Boolean = pkg in extraFinance || pkg in KNOWN_FINANCE || FINANCE_WORDS.any { w -> pkg.split('.', '_').any { it == w || it.endsWith(w) && w.length >= 4 } }
+    fun isFinance(pkg: String): Boolean = pkg in extraFinance || looksFinance(pkg)
 
     fun isShopping(pkg: String): Boolean = pkg in extraShopping || KNOWN_SHOPPING.any { pkg == it || pkg.startsWith("$it.") } ||
         SHOPPING_WORDS.any { w -> pkg.split('.', '_').any { it == w || it.startsWith(w) } }
@@ -56,6 +95,7 @@ class SystemFlowClassifier(
     companion object {
         const val SYSTEM_UI = "com.android.systemui"
         val DEFAULT_CHOOSERS = setOf("android", "com.android.intentresolver", "com.google.android.intentresolver")
+
         val CHOOSER_CLASSES = listOf("ChooserActivity", "ResolverActivity", "ChooserActivityLauncher")
 
         /** Fixed AOSP / GMS components that are part of normal flows on every brand. */
@@ -88,6 +128,13 @@ class SystemFlowClassifier(
         private val SHOPPING_WORDS = listOf("shop", "mall", "taobao", "tmall", "ecshopping", "buy")
 
         val KNOWN_FINANCE = setOf("com.eg.android.AlipayGphone", "com.unionpay", "com.jkos.app", "tw.com.pxmart", "com.google.android.apps.walletnfcrel")
+        /**
+         * Bank / payment / OTP by name. Attacker-controllable on purpose-accepted terms (review B8): it only turns a
+         * BLOCK into an ASK (never an ALLOW), and it protects real banking apps from a wrong block.
+         */
+        fun looksFinance(pkg: String): Boolean = pkg in KNOWN_FINANCE ||
+            FINANCE_WORDS.any { w -> pkg.split('.', '_').any { it == w || it.endsWith(w) && w.length >= 4 } }
+
         private val FINANCE_WORDS = listOf("bank", "pay", "wallet", "securities", "otp", "authenticator", "banking", "ebank", "mbank", "creditcard", "card")
     }
 }

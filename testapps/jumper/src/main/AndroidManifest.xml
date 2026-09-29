@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TEST ONLY: "跳轉測試器". Jumps to another app when shaken or tapped, to test the guard's anti-redirect on a REAL
+     phone. Safe to install on a real phone: it only acts while its own screen is open (no background service, no boot
+     receiver, no hidden icon, no notifications, no network permission). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries>
+        <package android:name="com.shopee.tw"/>
+        <package android:name="com.google.android.youtube"/>
+        <package android:name="com.android.chrome"/>
+        <package android:name="com.android.vending"/>
+        <package android:name="org.elderguard.testing.shop"/>
+        <intent><action android:name="android.intent.action.VIEW"/><data android:scheme="https"/></intent>
+        <intent><action android:name="android.intent.action.VIEW"/><data android:scheme="market"/></intent>
+    </queries>
+    <application android:label="跳轉測試器" android:icon="@android:drawable/ic_menu_directions">
+        <activity android:name=".Main" android:exported="true" android:launchMode="singleTop">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity>
+        <!-- same class name as AppLovin's full-screen ad page, so the guard treats it as an ad page -->
+        <activity android:name="com.applovin.adview.AppLovinFullscreenActivity" android:exported="false"/>
+    </application>
+</manifest>

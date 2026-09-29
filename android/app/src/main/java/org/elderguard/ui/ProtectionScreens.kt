@@ -125,7 +125,7 @@ fun ProtectionCard(s: ProtectionHome, onSetup: () -> Unit, onUnlock: () -> Unit)
             if (s.unlockLeftSec > 0) Text("跳轉保護暫停中，\n${s.unlockLeftSec} 秒後自動恢復。", style = MaterialTheme.typography.bodyMedium, color = Palette.Caution)
             if (!s.allOn) PrimaryButton("一鍵開啟長輩保護", onSetup, Palette.Caution)
             else QuietButton("暫時停止跳轉保護", onUnlock)
-            if (s.advancedAvailable) Text("進階保護可用（設定 → 嚴格模式）", style = MaterialTheme.typography.bodyMedium, color = Palette.InkSoft)
+            if (s.advancedAvailable) Text("進階保護可用\n（設定 → 嚴格模式）", style = MaterialTheme.typography.bodyMedium, color = Palette.InkSoft)
         }
     }
 }
@@ -265,7 +265,8 @@ fun FiltersScreen(
     s.lists.forEach { l ->
         Card {
             SwitchRow(l.name, l.enabled) { onEnable(l.id, it) }
-            Text("規則：${"%,d".format(l.rules)} 條　授權：${l.license}", style = MaterialTheme.typography.bodyMedium, color = Palette.InkSoft)
+            Text("規則：${"%,d".format(l.rules)} 條", style = MaterialTheme.typography.bodyMedium, color = Palette.InkSoft)
+            Text("授權：${l.license}", style = MaterialTheme.typography.bodyMedium, color = Palette.InkSoft)
             Text(if (l.updated != null) "更新：${l.updated}" else if (l.remote && !l.builtin) "還沒下載" else "還沒下載（開啟並更新後生效）",
                 style = MaterialTheme.typography.bodyMedium, color = Palette.InkSoft)
             l.error?.let { Text("上次更新失敗：$it\n（舊的規則繼續使用）", style = MaterialTheme.typography.bodyMedium, color = Palette.Caution) }
@@ -288,7 +289,7 @@ fun FiltersScreen(
                 }
             }
         }
-        Text("只下載清單（純文字），\n不會下載程式。\n下載失敗時，舊的規則照常使用。",
+        Text("只下載清單（純文字），\n不會下載程式。\n下載失敗時，\n舊的規則照常使用。",
             style = MaterialTheme.typography.bodyMedium, color = Palette.InkSoft)
         SecondaryButton(if (s.busy) "更新中…" else "全部現在更新") { if (!s.busy) onUpdate(null) }
     }
@@ -410,7 +411,7 @@ fun ProtectedAppsScreen(mode: String, apps: List<LabeledPkg>, onMode: (String) -
     Text("受保護的 App", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
     Text("受保護的 App 如果在您沒有\n點按時打開別的 App，\n守門員會阻止或先問您。", style = MaterialTheme.typography.bodyMedium, color = Palette.InkSoft)
     Card {
-        listOf("AUTO" to "自動：有廣告程式的 App（建議）", "MANUAL" to "只保護我選的 App", "ALL" to "保護全部 App").forEach { (id, t) ->
+        listOf("AUTO" to "自動：有廣告程式\n的 App（建議）", "MANUAL" to "只保護我選的 App", "ALL" to "保護全部 App").forEach { (id, t) ->
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
                 RadioButton(selected = mode == id, onClick = { onMode(id) })
                 Text(t, style = MaterialTheme.typography.bodyMedium)

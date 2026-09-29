@@ -117,7 +117,7 @@ class RedirectHistoryRepository private constructor(c: Context) {
 
 /**
  * Which apps are watched as redirect SOURCES. Default AUTO = user-installed apps that contain an ad SDK (from the
- * guard's own app scan) plus apps the user added. "Protect all apps" exists but is not the default.
+ * guard's own app scan), apps caught redirecting without a tap ([learn]), plus apps the user added. "Protect all apps" exists but is not the default.
  */
 class ProtectedAppManager private constructor(private val c: Context) {
     enum class Mode { AUTO, ALL, MANUAL }
@@ -125,12 +125,13 @@ class ProtectedAppManager private constructor(private val c: Context) {
     private val p = c.getSharedPreferences("redirect", Context.MODE_PRIVATE)
     @Volatile private var cache: Snapshot = snapshot()
 
-    private data class Snapshot(val mode: Mode, val include: Set<String>, val exclude: Set<String>, val adApps: Set<String>)
+    private data class Snapshot(val mode: Mode, val include: Set<String>, val exclude: Set<String>, val adApps: Set<String>,
+        val learned: Set<String>)
 
     private fun snapshot() = Snapshot(
         runCatching { Mode.valueOf(p.getString("mode", "AUTO")!!) }.getOrDefault(Mode.AUTO),
         p.getStringSet("include", emptySet())!!.toSet(), p.getStringSet("exclude", emptySet())!!.toSet(),
-        p.getStringSet("adApps", emptySet())!!.toSet(),
+        p.getStringSet("adApps", emptySet())!!.toSet(), p.getStringSet("learned", emptySet())!!.toSet(),
     )
 
     var mode: Mode
@@ -166,13 +167,29 @@ class ProtectedAppManager private constructor(private val c: Context) {
         if (n != s) { p.edit().putStringSet("adApps", n).apply(); cache = cache.copy(adApps = n) }
     }
 
+    /**
+     * AUTO mode: a user app the engine caught jumping away from an ad page or right after it was opened (review B8:
+     * "has an ad SDK" is decided by the app's own code; B9: never on "no tap seen" alone). Kept apart from [adApps],
+     * which every full scan replaces; shown in the protected-app list with its reason, and the user can switch it off.
+     */
+    fun learnable(pkg: String): Boolean { val s = cache; return s.mode == Mode.AUTO && pkg !in s.exclude && isUserApp(pkg) }
+
+    fun learn(pkg: String) {
+        val s = cache
+        if (pkg in s.learned) return
+        val n = s.learned + pkg
+        p.edit().putStringSet("learned", n).apply(); cache = s.copy(learned = n)
+    }
+
+    val learned get() = cache.learned
+
     fun isProtected(pkg: String): Boolean {
         val s = cache
         if (pkg in s.exclude) return false
         if (pkg in s.include) return true
         return when (s.mode) {
             Mode.MANUAL -> false
-            Mode.AUTO -> pkg in s.adApps
+            Mode.AUTO -> pkg in s.adApps || pkg in s.learned
             Mode.ALL -> isUserApp(pkg)
         }
     }

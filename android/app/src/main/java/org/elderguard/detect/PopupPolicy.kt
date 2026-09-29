@@ -18,8 +18,10 @@ class PopupPolicy(
     private val neverSource: Set<String>,
     /** Windows from these packages mean "the user is acting on the system UI" (notification shade, etc.). */
     private val userInitiatedSources: Set<String> = setOf("com.android.systemui"),
-    /** Input methods pop up windows constantly; they never change "which app the user is in". */
+    /** Windows from these packages never change "which app the user is in" (System UI). */
     private val transparentPackages: Set<String> = emptySet(),
+    /** Per window: a keyboard's input window is transparent, the keyboard app's own pages are not. */
+    private val transparentWindow: (String, String?) -> Boolean = { _, _ -> false },
     private val hiddenIconUserApp: (String) -> Boolean = { false },
     private val isLauncherEntry: (String, String?) -> Boolean = { _, _ -> false },
     /** True when the user closed the guard with Back just before [timeMs]: the page underneath is a return, not a pop-up. */
@@ -47,7 +49,7 @@ class PopupPolicy(
     }
 
     fun onWindow(pkg: String, className: String?, timeMs: Long): Decision {
-        if (pkg in transparentPackages) return Decision.NONE
+        if (pkg in transparentPackages || transparentWindow(pkg, className)) return Decision.NONE
         val p = prev
         prev = pkg
         val isAd = AdSdkCatalog.isAdActivity(className)

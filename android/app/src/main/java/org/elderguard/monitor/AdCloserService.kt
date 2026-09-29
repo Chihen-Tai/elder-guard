@@ -39,16 +39,19 @@ class AdCloserService : AccessibilityService() {
 
     override fun onServiceConnected() {
         store = Store(this)
-        val homes = packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY)
-            .map { it.activityInfo.packageName }
-        val imes = getSystemService(InputMethodManager::class.java).enabledInputMethodList.map { it.packageName }
+        // Only trusted roles (review B8): an app DECLARING HOME or an input method must not become "never a pop-up source".
+        val roles = TrustedRoles(this)
+        val homes = roles.homes()
+        val imes = roles.enabledImes()
         policy = PopupPolicy(
-            neverSource = setOf(packageName, "android", "com.google.android.permissioncontroller", "com.android.permissioncontroller",
-                "com.google.android.packageinstaller", "com.android.packageinstaller", "com.android.settings") + homes,
+            // fixed names only when that package really is a system app here: a missing one could be taken by a sideloaded app
+            neverSource = setOf(packageName) + TrustedRoles.SYSTEM_DIALOGS.filter { it == "android" || roles.isSystemApp(it) } + homes,
             // System UI windows (heads-up notifications, the shade) say nothing about which app the user is in;
             // treating them as "user action" let every heads-up reset the count (emulator test 0.3.3).
             userInitiatedSources = emptySet(),
-            transparentPackages = imes.toSet() + "com.android.systemui",
+            transparentPackages = setOf("com.android.systemui"),
+            // a keyboard's input window, never the keyboard app's own pages (which may be ads)
+            transparentWindow = { pkg, cls -> pkg in imes && !roles.isActivity(pkg, cls) },
             isLauncherEntry = { pkg, cls -> cls != null && cls in runCatching { scanner.launcherClasses(pkg) }.getOrDefault(emptySet()) },
             userJustLeftGuard = { t -> org.elderguard.detect.IntrusionDetector.isReturnAfterExit(listOf(org.elderguard.MainActivity.userLeftAtMs), t) },
             hiddenIconUserApp = { pkg ->

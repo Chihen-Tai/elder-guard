@@ -19,9 +19,23 @@ class UserIntentTracker {
     @Volatile var lastShakeMs = 0L
         private set
     @Volatile private var lastSystemUiMs = 0L
+    @Volatile private var lastPostedMs = 0L
 
     fun onSystemUi(t: Long) { lastSystemUiMs = t }
-    fun systemUiWithin(t: Long, windowMs: Long) = lastSystemUiMs != 0L && t - lastSystemUiMs in 0..windowMs
+    /** Any app posted / updated a notification (from the notification listener). */
+    fun onNotificationPosted(t: Long) { lastPostedMs = t }
+
+    /**
+     * System UI was just in front — the user may have opened the shade. Not when a notification was posted just
+     * before: its heads-up is a System UI window too, and any app can post one (review B8: an app posting its own
+     * heads-up, then jumping to a shop that has a notification showing, passed as "tapped a notification").
+     */
+    fun systemUiWithin(t: Long, windowMs: Long): Boolean {
+        val ui = lastSystemUiMs
+        if (ui == 0L || t - ui !in 0..windowMs) return false
+        val post = lastPostedMs
+        return !(post != 0L && ui - post in -POST_SKEW_MS..HEADS_UP_MS)
+    }
 
     @Synchronized fun onClick(pkg: String, cls: String?, t: Long) {
         clicks.addLast(Click(pkg, cls, t)); trim(t)
@@ -45,6 +59,9 @@ class UserIntentTracker {
     /** True when [pkg] has reported clicks/scrolls within [sinceMs] — so a missing click there is meaningful. */
     @Synchronized fun observable(pkg: String, t: Long, sinceMs: Long = OBSERVABLE_MS) = interactionSeen[pkg]?.let { t - it <= sinceMs } == true
 
+    /** Last click/scroll time seen from [pkg] (diagnostics only). */
+    @Synchronized fun lastInteraction(pkg: String): Long? = interactionSeen[pkg]
+
     /** A shake up to [windowMs] before [t] — or just after it: the ad reacts to the first jolt, the sensor is slower. */
     fun shookWithin(t: Long, windowMs: Long) = lastShakeMs != 0L && t - lastShakeMs in -SHAKE_LATE_MS..windowMs
 
@@ -60,6 +77,10 @@ class UserIntentTracker {
         /** An app that reported a click or scroll in the last 30 minutes reports clicks. */
         const val OBSERVABLE_MS = 30 * 60_000L
         const val SHAKE_LATE_MS = 500L
+        /** A heads-up stays up to ~10 s (and can collapse with another System UI event). */
+        const val HEADS_UP_MS = 10_000L
+        /** The listener callback and the window event arrive in either order. */
+        const val POST_SKEW_MS = 1_000L
     }
 }
 
@@ -94,7 +115,10 @@ class ShakeDetector(
  * repeats of that pair are handled the same way without more notifications.
  */
 class RedirectLoopDetector(private val clock: () -> Long) {
+    /** Blocks inside the loop window only (reset when a loop is declared). */
     private val hits = HashMap<String, ArrayDeque<Long>>()
+    /** All blocks of the last [RECENT_MS], for the "repeated" signal (kept apart: the loop window trims to 10 s). */
+    private val recent = HashMap<String, ArrayDeque<Long>>()
     private val cooldownUntil = HashMap<String, Long>()
 
     @Synchronized fun inCooldown(source: String, target: String) = (cooldownUntil["$source>$target"] ?: 0) > clock()
@@ -103,6 +127,9 @@ class RedirectLoopDetector(private val clock: () -> Long) {
     @Synchronized fun recordBlock(source: String, target: String): Boolean {
         val k = "$source>$target"
         val now = clock()
+        val r = recent.getOrPut(k) { ArrayDeque() }
+        r.addLast(now)
+        while (r.isNotEmpty() && now - r.first() > RECENT_MS) r.removeFirst()
         val q = hits.getOrPut(k) { ArrayDeque() }
         q.addLast(now)
         while (q.isNotEmpty() && now - q.first() > LOOP_WINDOW_MS) q.removeFirst()
@@ -111,15 +138,16 @@ class RedirectLoopDetector(private val clock: () -> Long) {
     }
 
     /** How many times this pair was blocked recently (for the "repeated" signal). */
-    @Synchronized fun recentCount(source: String, target: String, windowMs: Long = 10 * 60_000L): Int {
+    @Synchronized fun recentCount(source: String, target: String, windowMs: Long = RECENT_MS): Int {
         val now = clock()
-        return hits["$source>$target"]?.count { now - it <= windowMs } ?: 0
+        return recent["$source>$target"]?.count { now - it <= windowMs } ?: 0
     }
 
     companion object {
         const val LOOP_COUNT = 3
         const val LOOP_WINDOW_MS = 10_000L
         const val COOLDOWN_MS = 30_000L
+        const val RECENT_MS = 10 * 60_000L
     }
 }
 
