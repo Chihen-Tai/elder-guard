@@ -74,7 +74,7 @@ fonts, and Back always goes one page back. See [docs/DESIGN-NOTES.md](docs/DESIG
   (`canRetrieveWindowContent=false`; the code has no calls that read text).
 - The DNS log (which addresses were looked up) is **off by default**; when on, it keeps at most 24 hours / 500 entries
   and is deleted when turned off.
-- The jump log records only "which app a protected app opened" and is kept for 7 days.
+- The jump log records only "which app a protected app opened" and is kept for 7 days. A separate **counts-only** jump summary (seconds from tap to the other app, how often it blocked / asked, how often the user opened the app anyway) has no app names, is kept on the phone, is shown on the diagnostics page and goes into the exported log.
 - The diagnostic log is off by default, kept at most 14 days, and deleted when consent is turned off.
 
 ## What it cannot do

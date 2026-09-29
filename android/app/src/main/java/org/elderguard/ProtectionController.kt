@@ -308,10 +308,21 @@ class ProtectionController(private val a: MainActivity) {
             DiagRow("通知存取", caps.notificationAccess, if (caps.notificationAccess) "已開啟" else "沒有開啟"),
             DiagRow("使用情況存取", caps.usageAccess, if (caps.usageAccess) "已開啟" else "沒有開啟"),
             DiagRow("背景監測", caps.monitorAlive, caps.heartbeatAgeSec?.let { "上次回報：$it 秒前" } ?: "沒有回報"),
+            redirectStatsRow(),
             DiagRow("電池最佳化", batteryOk, if (batteryOk) "不限制（好）" else "受限制：部分手機會停掉守門員"),
             DiagRow("開機自動恢復", true, "廣告防護：" + (if (vpnSettings.enabled) "開" else "關") + "\n背景監測：開\n嚴格模式：" + (if (strict.enabled) "開" else "關")),
             DiagRow("Android 版本", null, "${Build.VERSION.RELEASE}（SDK ${Build.VERSION.SDK_INT}），${Build.MANUFACTURER} ${Build.MODEL}"),
         )
+    }
+
+    /** Long-term jump statistics kept on the phone (counts only), for the family / the trial. */
+    private fun redirectStatsRow(): DiagRow {
+        val st = org.elderguard.redirect.RedirectHistoryRepository.get(a).stats()
+        if (st.sinceMs == 0L) return DiagRow("跳轉統計", null, "還沒有紀錄")
+        val taps = st.tapShop.sum() + st.tapOther.sum()
+        val slow = st.tapShop[3] + st.tapOther[3]
+        return DiagRow("跳轉統計", null, "從 ${java.text.SimpleDateFormat("M/d", java.util.Locale.TAIWAN).format(java.util.Date(st.sinceMs))} 開始\n" +
+            "點了才開：$taps 次\n（3 秒以上：$slow 次）\n阻止 ${st.blocks} 次、先問 ${st.asks} 次\n事後仍然打開：${st.openedAnyway} 次")
     }
 
     private fun upstreamName(label: String?) = when {

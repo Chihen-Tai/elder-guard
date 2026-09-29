@@ -173,7 +173,8 @@ class RedirectGuard(private val svc: AccessibilityService) {
 
     private fun log(tr: Transition, v: Verdict, outcome: String?) {
         history.add(RedirectEvent(tr.timeMs, tr.from, tr.to, v.decision, v.reasons, v.risk, v.score, v.interactionAgeMs, v.matchedRule, outcome))
-        if (v.decision != Decision.ALLOW) store.diag("redirect", tr.from, mapOf("to" to tr.to, "d" to v.decision.name,
+        // with consent, also the slow taps (>= 3 s from tap to the other app): the evidence for the 4 s click window
+        if (v.decision != Decision.ALLOW || (v.interactionAgeMs ?: 0) >= 3_000) store.diag("redirect", tr.from, mapOf("to" to tr.to, "d" to v.decision.name,
             "r" to v.reasons.joinToString(",") { it.name }, "score" to v.score, "ia" to v.interactionAgeMs, "o" to outcome,
             "fromCls" to tr.fromClass?.substringAfterLast('.'), "dwell" to tr.fromDwellMs))
     }

@@ -67,11 +67,31 @@ class RedirectRuleRepository private constructor(c: Context) {
 class RedirectHistoryRepository private constructor(c: Context) {
     private val file = File(c.filesDir, "redirect_history.jsonl")
     private var lastTrimMs = 0L
+    /** Counts for the whole trial (the history above is trimmed to 7 days). */
+    private val statsFile = File(c.filesDir, "redirect_stats.txt")
+    private var stats: RedirectStats = if (statsFile.exists()) runCatching { RedirectStats.parse(statsFile.readText()) }.getOrDefault(RedirectStats())
+        // first run after the update: start from the 7 days of history the phone still has
+        else RedirectStats().also { st ->
+            runCatching { read().filter { counts(it) }.forEach { e -> st.record(e.timeMs, e.decision, e.reasons, e.interactionAgeMs, e.outcome) } }
+            saveStats(st)
+        }
+
+    /** The guard's own test apps (testapps/, e.g. the jump tester on a real phone) are not real use. */
+    private fun counts(e: RedirectEvent) = !e.source.startsWith(TEST_APPS) && !e.target.startsWith(TEST_APPS)
+
+    private fun saveStats(st: RedirectStats) = runCatching { // temp -> rename, so a crash never leaves half a file
+        val tmp = File(statsFile.path + ".tmp"); tmp.writeText(st.toText()); tmp.renameTo(statsFile)
+    }
+
+    @Synchronized fun stats(): RedirectStats = RedirectStats.parse(stats.toText()) // a copy
+
+    @Synchronized fun clearStats() { stats = RedirectStats(); statsFile.delete() }
 
     @Synchronized fun add(e: RedirectEvent) {
         file.appendText(JSONObject().put("t", e.timeMs).put("s", e.source).put("g", e.target).put("d", e.decision.name)
             .put("r", e.reasons.joinToString(",") { it.name }).put("k", e.risk.name).put("sc", e.score)
             .put("ia", e.interactionAgeMs ?: -1).put("m", e.matchedRule ?: "").put("o", e.outcome ?: "").toString() + "\n")
+        if (counts(e)) { stats.record(e.timeMs, e.decision, e.reasons, e.interactionAgeMs, e.outcome); saveStats(stats) }
         // the promise is "7 days": trim by age at most once an hour, and by size at any time
         val now = System.currentTimeMillis()
         if (file.length() > MAX_BYTES || now - lastTrimMs > 3600_000L) { trim(); lastTrimMs = now }
@@ -108,6 +128,7 @@ class RedirectHistoryRepository private constructor(c: Context) {
 
     companion object {
         const val KEEP_MS = 7L * 24 * 3600 * 1000
+        private const val TEST_APPS = "org.elderguard.testing."
         const val MAX_BYTES = 512L * 1024
         const val MAX_LINES = 2000
         @Volatile private var instance: RedirectHistoryRepository? = null

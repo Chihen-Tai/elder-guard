@@ -51,6 +51,9 @@ object Diagnostics {
             appendLine("lastScan=${if (s.lastScanMs > 0) stamp.format(Date(s.lastScanMs)) else "never"} flagged=${s.lastScanFlagged}")
             appendLine("kept=${s.keptPackages().joinToString(",")}")
             appendLine()
+            appendLine("== redirect stats (counts only, whole trial) ==")
+            append(org.elderguard.redirect.RedirectHistoryRepository.get(c).stats().toText())
+            appendLine()
             appendLine("== events (${events.size}) ==")
             events.forEach { appendLine(fmt(it)) }
             appendLine()
