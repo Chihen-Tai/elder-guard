@@ -62,6 +62,9 @@ class ProtectionController(private val a: MainActivity) {
     var vpnPage by mutableStateOf<VpnPageState?>(null); private set
     var filtersPage by mutableStateOf<FiltersPageState?>(null); private set
     var dnsRows by mutableStateOf(listOf<DnsRow>()); private set
+    /** Compose state, not DnsStats.historyOn read during composition: turning it on with no rows yet changed no state,
+     *  so the switch kept showing "off" and a second tap turned it off again (vivo field test). */
+    var dnsHistoryOn by mutableStateOf(false); private set
     var redirectRows by mutableStateOf(listOf<RedirectRow>()); private set
     var diagRows by mutableStateOf(listOf<DiagRow>()); private set
     var strictPage by mutableStateOf<StrictPageState?>(null); private set
@@ -224,6 +227,7 @@ class ProtectionController(private val a: MainActivity) {
 
     fun refreshDns() {
         val st = DnsStats.get(a)
+        dnsHistoryOn = st.historyOn
         a.lifecycleScope.launch {
             dnsRows = withContext(Dispatchers.IO) { st.recent().take(200).map { DnsRow(timeFmt.format(Date(it.t)), it.name, it.blocked, it.app?.let(::label)) } }
         }

@@ -183,7 +183,7 @@ class MainActivity : ComponentActivity() {
                         pc.appList, pc::toggleVpnApp) { back(); pc.refreshVpn() }
                     Screen.Filters -> pc.filtersPage?.let { f -> org.elderguard.ui.FiltersScreen(f, pc::enableList, pc::updateNow, pc::rollback, pc::removeList,
                         pc::setRemote, pc::setWifiOnly, pc::addList, pc::addRule, pc::removeRule, ::back, pc::setInterval) }
-                    Screen.DnsHistory -> org.elderguard.ui.DnsHistoryScreen(org.elderguard.vpn.DnsStats.get(this).historyOn, pc.dnsRows, pc::setDnsHistory,
+                    Screen.DnsHistory -> org.elderguard.ui.DnsHistoryScreen(pc.dnsHistoryOn, pc.dnsRows, pc::setDnsHistory,
                         { d, b -> pc.dnsRule(d, b); pc.refreshDns() }, ::back)
                     Screen.Redirect -> org.elderguard.ui.RedirectScreen(pc.redirectOn, pc.redirectServiceOk, pc.protectedModeName, protectedCount,
                         pc.redirectRules(), unlockLeft, { pc.setRedirect(it); tick++ }, { safeStart(org.elderguard.monitor.AdCloserService.settingsIntent(this)) },
